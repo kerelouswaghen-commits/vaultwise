@@ -111,42 +111,29 @@ with st.sidebar:
 # TOP NAVIGATION BAR — always visible, mobile-friendly
 # ═══════════════════════════════════════════════════════════════════════════
 if "active_page" not in st.session_state:
-    st.session_state.active_page = "Home"
+    st.session_state.active_page = "📊 Home"
 
+_nav_options = ["📊 Home", "📋 Txns", "🔮 Insights", "⚙️ Settings"]
+_nav_to_page = {"📊 Home": "Home", "📋 Txns": "Transactions", "🔮 Insights": "Savings Journey", "⚙️ Settings": "Settings"}
 
-def _set_page(p):
-    st.session_state.active_page = p
-
-
-_nav_items = [
-    ("📊", "Home", "Home"),
-    ("📋", "Txns", "Transactions"),
-    ("🔮", "Insights", "Savings Journey"),
-    ("⚙️", "Settings", "Settings"),
-]
-
-st.markdown('<div class="nav-bar">', unsafe_allow_html=True)
-_ncols = st.columns([1, 1, 1, 1], gap="small")
-for i, (icon, short_label, page_name) in enumerate(_nav_items):
-    is_active = st.session_state.active_page == page_name
-    _ncols[i].button(
-        f"{icon} {short_label}", key=f"nav_{i}",
-        type="primary" if is_active else "secondary",
-        use_container_width=True,
-        on_click=_set_page, args=(page_name,),
-    )
-st.markdown('</div>', unsafe_allow_html=True)
+_selected_nav = st.segmented_control(
+    "nav", _nav_options,
+    default=st.session_state.active_page,
+    label_visibility="collapsed",
+)
+if _selected_nav:
+    st.session_state.active_page = _selected_nav
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PAGE ROUTING
 # ═══════════════════════════════════════════════════════════════════════════
-from pages.home import home_page
-from pages.transactions import transactions_page
-from pages.savings_journey import savings_journey_page
-from pages.settings import settings_page
+from views.home import home_page
+from views.transactions import transactions_page
+from views.savings_journey import savings_journey_page
+from views.settings import settings_page
 
-page = st.session_state.active_page
+page = _nav_to_page.get(st.session_state.active_page, "Home")
 if page == "Home":
     home_page()
 elif page == "Transactions":
