@@ -211,7 +211,7 @@ def home_page():
 
     if _gap_data and "actions" in _gap_data:
         if _over_budget > 0:
-            st.markdown(f"#### 🔴 You're ${_over_budget:,.0f} over budget — here's how to recover")
+            st.markdown(f"#### 🔴 You're ${_over_budget:,.0f} over budget — here's how to hit your ${savings_target:,} target")
         else:
             st.markdown("#### 💡 Your Top Opportunities This Month")
 
@@ -223,11 +223,11 @@ def home_page():
             if _over_budget > 0:
                 _gap_remaining = max(_over_budget - _cumulative_recovery, 0)
                 _pct_recovered = min(_cumulative_recovery / _over_budget * 100, 100) if _over_budget > 0 else 100
-                _bar_color = "#22c55e" if _gap_remaining == 0 else "#3b82f6"
-                _gap_label = f"Gap: ${_gap_remaining:,.0f} remaining" if _gap_remaining > 0 else "Gap closed ✅"
+                _bar_color = "#22c55e" if _gap_remaining == 0 else "#8b5cf6"
+                _gap_label = f"Recovered ${_cumulative_recovery:,.0f} of ${_over_budget:,.0f} ({_pct_recovered:.0f}%)" if _gap_remaining > 0 else "Gap closed ✅"
             else:
-                _bar_color = "#22c55e"
-                _gap_label = f"+${_cumulative_recovery:,.0f} potential"
+                _bar_color = "#14b8a6"
+                _gap_label = f"Potential savings: ${_cumulative_recovery:,.0f}/mo"
                 _pct_recovered = min(_cumulative_recovery / max(_gap_amount, 1) * 100, 100)
 
             _recovery_text = f"Saves ${_act.get('recovery', 0):,.0f}"
@@ -242,6 +242,11 @@ def home_page():
                 f'</div></div>'
             )
             st.markdown(_act_html, unsafe_allow_html=True)
+
+        if _over_budget > 0:
+            st.caption("Purple bar = recovery in progress | Green bar = gap fully closed")
+        else:
+            st.caption("Teal bar = potential monthly savings from each action")
 
         _total_rec = _gap_data.get("total_recovery", _cumulative_recovery)
         _msg = _gap_data.get("message", "")
