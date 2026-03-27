@@ -62,6 +62,15 @@ def monarch_auto_sync():
     if not st.session_state.monarch_synced:
         conn = database.get_connection(DB_PATH)
         enabled = database.get_setting(conn, "monarch_enabled", "0")
+
+        # Auto-enable if credentials are configured but not yet connected
+        if enabled != "1":
+            import monarch_sync
+            email, password = monarch_sync._get_monarch_credentials()
+            if email and password:
+                database.set_setting(conn, "monarch_enabled", "1")
+                enabled = "1"
+
         if enabled == "1":
             try:
                 import monarch_sync
@@ -69,9 +78,9 @@ def monarch_auto_sync():
                 if result["new"] > 0:
                     st.toast(f"Monarch: {result['new']} new transactions synced")
                 if result["errors"]:
-                    st.toast(f"Monarch: {result['errors'][0]}", icon="⚠️")
+                    st.session_state.monarch_sync_error = result["errors"][0]
             except Exception as e:
-                st.toast(f"Monarch sync: {str(e)[:60]}", icon="⚠️")
+                st.session_state.monarch_sync_error = str(e)[:120]
         conn.close()
         st.session_state.monarch_synced = True
 

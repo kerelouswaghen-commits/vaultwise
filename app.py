@@ -69,6 +69,9 @@ init_session()
 load_persisted_config()
 monarch_auto_sync()
 
+if st.session_state.get("monarch_sync_error"):
+    st.error(f"Monarch sync failed: {st.session_state.monarch_sync_error}")
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # SIDEBAR — minimal: just API key + savings widget
