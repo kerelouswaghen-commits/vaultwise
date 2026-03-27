@@ -49,6 +49,18 @@ if "/tmp" in _private_path and "/tmp" not in sys.path:
 from config_private import *  # noqa: F401, F403
 
 # ---------------------------------------------------------------------------
+# Backwards compatibility — Streamlit Cloud secrets may use old names
+# ---------------------------------------------------------------------------
+import sys as _sys
+_this = _sys.modules[__name__]
+if not hasattr(_this, "MONTHLY_EXPENSES") and hasattr(_this, "NON_DAYCARE_MONTHLY"):
+    MONTHLY_EXPENSES = NON_DAYCARE_MONTHLY  # noqa: F405
+if not hasattr(_this, "CC_MONTHLY_AVERAGE") and hasattr(_this, "CC_MONTHLY_AVERAGE_EXCL_DAYCARE"):
+    CC_MONTHLY_AVERAGE = CC_MONTHLY_AVERAGE_EXCL_DAYCARE  # noqa: F405
+if not hasattr(_this, "FAMILY_DISPLAY_NAME"):
+    FAMILY_DISPLAY_NAME = "Family Budget"
+
+# ---------------------------------------------------------------------------
 # Computed values from private data
 # ---------------------------------------------------------------------------
 _CHECKING_SUBTOTAL = sum(FIXED_MONTHLY_EXPENSES.values())  # noqa: F405
