@@ -109,15 +109,22 @@ def get_income_for_month(year: int, month: int) -> dict:
 
 def project_cash_flow(
     months_ahead: int = 66,
-    start_year: int = 2026,
-    start_month: int = 4,
+    start_year: Optional[int] = None,
+    start_month: Optional[int] = None,
     monthly_expense_override: Optional[float] = None,
     savings_adjustments: Optional[dict] = None,
 ) -> pd.DataFrame:
     """
     Project month-by-month cash flow from start through months_ahead.
-    Uses income growth model from config.
+    Uses income growth model from config. Defaults to next month if no start date given.
     """
+    if start_year is None or start_month is None:
+        today = date.today()
+        if today.month < 12:
+            start_year, start_month = today.year, today.month + 1
+        else:
+            start_year, start_month = today.year + 1, 1
+
     rows = []
     cumulative = 0.0
     # Compute dynamically from current fixed expenses + credit card average
