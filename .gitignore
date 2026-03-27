@@ -34,6 +34,8 @@ config_private.py
 
 # Sensitive tokens
 monarchRecoveryTokens.txt
+data/monarch_session.json
+data/monarch_session.pickle
 
 # Claude Code local config
 .claude/

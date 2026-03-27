@@ -665,12 +665,21 @@ def settings_page():
             st.info("Connect your Monarch Money account to auto-import transactions.")
 
         with st.expander("Credentials", expanded=not _mm_enabled):
-            _mm_email = database.get_setting(conn, "monarch_email", "")
-            _mm_password = database.get_setting(conn, "monarch_password", "")
-            _new_email = st.text_input("Monarch Email", value=_mm_email, key="mm_email")
-            _new_password = st.text_input("Monarch Password", type="password",
-                                           value=_mm_password if _mm_password else "",
-                                           key="mm_password")
+            # Monarch credentials now come from env vars / st.secrets (not DB)
+            _mm_email = os.environ.get("MONARCH_EMAIL", "")
+            if not _mm_email:
+                try:
+                    _mm_email = st.secrets.get("MONARCH_EMAIL", "")
+                except (FileNotFoundError, KeyError):
+                    pass
+            if _mm_email:
+                st.success(f"Monarch credentials configured via environment (`{_mm_email}`)")
+            else:
+                st.warning(
+                    "Set **MONARCH_EMAIL** and **MONARCH_PASSWORD** in your `.env` file "
+                    "or Streamlit Cloud secrets to connect."
+                )
+
             _mm_device_uuid = database.get_setting(conn, "monarch_device_uuid", "")
             _new_device_uuid = st.text_input(
                 "Device UUID", value=_mm_device_uuid, key="mm_device_uuid",
@@ -681,9 +690,7 @@ def settings_page():
 
             _mm_c1, _mm_c2 = st.columns(2)
             if _mm_c1.button("Connect to Monarch", key="mm_connect"):
-                if _new_email and _new_password:
-                    database.set_setting(conn, "monarch_email", _new_email)
-                    database.set_setting(conn, "monarch_password", _new_password)
+                if _mm_email:
                     with st.spinner("Authenticating..."):
                         try:
                             _mm_client = monarch_sync.get_client(conn)
@@ -708,13 +715,11 @@ def settings_page():
                         except Exception as e:
                             st.error(f"Connection error: {e}")
                 else:
-                    st.warning("Enter both email and password.")
+                    st.warning("Configure MONARCH_EMAIL and MONARCH_PASSWORD in .env first.")
 
             if _mm_c2.button("Disconnect", key="mm_disconnect", disabled=not _mm_enabled):
                 monarch_sync.disconnect()
                 database.set_setting(conn, "monarch_enabled", "0")
-                database.set_setting(conn, "monarch_email", "")
-                database.set_setting(conn, "monarch_password", "")
                 database.set_setting(conn, "monarch_last_sync", "")
                 database.set_setting(conn, "monarch_account_map", "{}")
                 database.set_setting(conn, "monarch_category_map", "{}")

@@ -7,7 +7,7 @@ A data-driven family budget tracker powered by Claude AI, Prophet forecasting, a
 ### Run everything (app + Telegram bot) in one line:
 
 ```bash
-cd "/Users/kerelouswaghen/Desktop/Expenses tracking" && source .venv/bin/activate && launchctl load ~/Library/LaunchAgents/com.vaultwise.bot.plist 2>/dev/null; lsof -ti:8501 | xargs kill -9 2>/dev/null; sleep 1 && streamlit run app.py --server.address 0.0.0.0 --server.port 8501
+cd "<your-project-directory>" && source .venv/bin/activate && launchctl load ~/Library/LaunchAgents/com.vaultwise.bot.plist 2>/dev/null; lsof -ti:8501 | xargs kill -9 2>/dev/null; sleep 1 && streamlit run app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
 ### Stop everything:

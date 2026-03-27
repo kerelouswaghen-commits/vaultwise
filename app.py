@@ -38,6 +38,32 @@ if ('serviceWorker' in navigator) {
 """, height=0)
 
 inject_css()
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AUTHENTICATION GATE
+# ═══════════════════════════════════════════════════════════════════════════
+def _check_password():
+    """Block access unless the correct password is provided."""
+    if st.session_state.get("authenticated"):
+        return True
+    try:
+        correct = st.secrets["app_password"]
+    except (FileNotFoundError, KeyError):
+        return True  # no password configured (local dev) — allow access
+
+    st.markdown("## 🔒 VaultWise")
+    pw = st.text_input("Password", type="password", key="_login_pw")
+    if st.button("Login"):
+        if pw == correct:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    return False
+
+if not _check_password():
+    st.stop()
+
 database.init_db(DB_PATH)
 init_session()
 load_persisted_config()

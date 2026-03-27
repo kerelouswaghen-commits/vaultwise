@@ -45,6 +45,11 @@ def load_persisted_config():
         database.set_setting(conn, "income_config", json.dumps(config.INCOME))
     # Seed default objectives
     database.seed_default_objectives(conn)
+    # One-time cleanup: remove Monarch credentials from DB (now in env/secrets)
+    for _stale_key in ("monarch_email", "monarch_password"):
+        _val = database.get_setting(conn, _stale_key, "")
+        if _val:
+            database.set_setting(conn, _stale_key, "")
     conn.close()
 
 

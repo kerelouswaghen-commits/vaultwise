@@ -30,6 +30,23 @@ FETCH_LIMIT = 500
 
 
 # ---------------------------------------------------------------------------
+# Credential helpers
+# ---------------------------------------------------------------------------
+def _get_monarch_credentials():
+    """Read Monarch email/password from env vars or st.secrets (never from DB)."""
+    email = os.environ.get("MONARCH_EMAIL", "")
+    password = os.environ.get("MONARCH_PASSWORD", "")
+    if not email:
+        try:
+            import streamlit as st
+            email = st.secrets.get("MONARCH_EMAIL", "")
+            password = st.secrets.get("MONARCH_PASSWORD", "")
+        except Exception:
+            pass
+    return email, password
+
+
+# ---------------------------------------------------------------------------
 # Custom exceptions
 # ---------------------------------------------------------------------------
 class MonarchMFARequired(Exception):
@@ -182,10 +199,12 @@ def get_client(conn) -> dict:
     Return auth context dict {"token": str, "device_uuid": str, "headers": dict}.
     Tries saved session first, then fresh login.
     """
-    email = database.get_setting(conn, "monarch_email", "")
-    password = database.get_setting(conn, "monarch_password", "")
+    email, password = _get_monarch_credentials()
     if not email or not password:
-        raise MonarchNotConfigured("Monarch email/password not set in Settings.")
+        raise MonarchNotConfigured(
+            "Monarch email/password not configured. "
+            "Set MONARCH_EMAIL and MONARCH_PASSWORD in your .env or Streamlit secrets."
+        )
 
     device_uuid = database.get_setting(conn, "monarch_device_uuid", "")
 
@@ -211,8 +230,7 @@ def get_client(conn) -> dict:
 
 def complete_mfa(conn, code: str) -> dict:
     """Complete MFA login with the user-provided TOTP code."""
-    email = database.get_setting(conn, "monarch_email", "")
-    password = database.get_setting(conn, "monarch_password", "")
+    email, password = _get_monarch_credentials()
     device_uuid = database.get_setting(conn, "monarch_device_uuid", "")
     token = _login(email, password, device_uuid, mfa_code=code)
     _save_session(token)
@@ -225,8 +243,7 @@ def complete_mfa(conn, code: str) -> dict:
 
 def complete_email_otp(conn, code: str) -> dict:
     """Complete login with the email OTP code Monarch sent."""
-    email = database.get_setting(conn, "monarch_email", "")
-    password = database.get_setting(conn, "monarch_password", "")
+    email, password = _get_monarch_credentials()
     device_uuid = database.get_setting(conn, "monarch_device_uuid", "")
     token = _login(email, password, device_uuid, email_otp=code)
     _save_session(token)
