@@ -7,11 +7,6 @@ Called from database.init_db() after the base schema is created.
 import sqlite3
 from datetime import datetime
 
-try:
-    import libsql_experimental as libsql
-    _LIBSQL_ERROR = getattr(libsql, "OperationalError", sqlite3.OperationalError)
-except ImportError:
-    _LIBSQL_ERROR = sqlite3.OperationalError
 
 
 MIGRATIONS = [
@@ -109,7 +104,7 @@ def run_pending(conn: sqlite3.Connection) -> list[str]:
         if mid == "002_transaction_tags":
             try:
                 conn.execute("ALTER TABLE transactions ADD COLUMN tags TEXT DEFAULT NULL")
-            except (sqlite3.OperationalError, _LIBSQL_ERROR):
+            except (sqlite3.OperationalError, Exception):
                 pass  # Column already exists
 
         elif migration["sql"]:

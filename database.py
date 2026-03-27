@@ -18,9 +18,6 @@ TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL", "")
 TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
 _USE_TURSO = bool(TURSO_DATABASE_URL)
 
-if _USE_TURSO:
-    import libsql_experimental as libsql
-
 
 def _is_valid_date(s: str) -> bool:
     """Check if a string is a valid ISO date (not 'unknown' or empty)."""
@@ -35,9 +32,8 @@ def _is_valid_date(s: str) -> bool:
 
 def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
     if _USE_TURSO:
-        conn = libsql.connect(database=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
-        conn.row_factory = sqlite3.Row
-        return conn
+        from turso_client import TursoConnection
+        return TursoConnection(TURSO_DATABASE_URL, TURSO_AUTH_TOKEN)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
