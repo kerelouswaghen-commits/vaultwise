@@ -799,6 +799,33 @@ def delete_setting(conn, key: str) -> None:
     conn.commit()
 
 
+# ── Gap Closer Cache ─────────────────────────────────────────────────────
+
+def get_gap_closer_cache(conn, month: str, gap_amount: float) -> dict | None:
+    """Retrieve cached gap closer result from DB. Returns None if stale (>24h)."""
+    import json
+    key = f"gap_closer_{month}_{gap_amount:.0f}"
+    raw = get_setting(conn, key, "")
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+        cached_at = datetime.fromisoformat(data.get("_cached_at", ""))
+        if (datetime.now() - cached_at).total_seconds() > 86400:
+            return None
+        return data
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def set_gap_closer_cache(conn, month: str, gap_amount: float, result: dict):
+    """Persist gap closer result to DB with timestamp."""
+    import json
+    key = f"gap_closer_{month}_{gap_amount:.0f}"
+    result["_cached_at"] = datetime.now().isoformat()
+    set_setting(conn, key, json.dumps(result, default=str))
+
+
 # ── Weekly Upload Cycle ──────────────────────────────────────────────────
 
 WEEKLY_ACCOUNTS = ["chase_4730", "chase_3072", "joint_checking"]
