@@ -18,33 +18,19 @@ _config_dir = os.path.dirname(os.path.abspath(__file__))
 _private_path = os.path.join(_config_dir, "config_private.py")
 
 if not os.path.exists(_private_path):
-    # On Streamlit Cloud: generate config_private.py from secrets
+    # On Streamlit Cloud: parse config_private from secrets entirely in-memory
+    # (never write to disk — avoids exposing PII as a plaintext file in /tmp)
     try:
         import streamlit as st
         _content = st.secrets.get("config_private_py", "")
         if _content:
-            with open(_private_path, "w") as f:
-                f.write(_content)
-    except Exception:
-        # Try writing to /tmp if main dir is read-only
-        import sys
-        _private_path = "/tmp/config_private.py"
-        try:
-            import streamlit as st
-            _content = st.secrets.get("config_private_py", "")
-            if _content:
-                with open(_private_path, "w") as f:
-                    f.write(_content)
-                # Add /tmp to Python path so import works
-                if "/tmp" not in sys.path:
-                    sys.path.insert(0, "/tmp")
-        except Exception as e:
-            raise RuntimeError(f"Cannot load config_private.py: {e}")
-
-# If config_private.py is in /tmp, make sure it's importable
-import sys
-if "/tmp" in _private_path and "/tmp" not in sys.path:
-    sys.path.insert(0, "/tmp")
+            import types, sys  # noqa: E401
+            _mod = types.ModuleType("config_private")
+            _mod.__file__ = "<config_private_from_secrets>"
+            exec(compile(_content, "<config_private>", "exec"), _mod.__dict__)  # noqa: S102
+            sys.modules["config_private"] = _mod
+    except Exception as e:
+        raise RuntimeError(f"Cannot load config_private: {e}")
 
 from config_private import *  # noqa: F401, F403
 

@@ -292,18 +292,16 @@ def settings_page():
 
     # ── 6. Claude API ─────────────────────────────────────────────────
     st.markdown("#### Claude API")
-    current_key = os.environ.get("ANTHROPIC_API_KEY", "") or database.get_setting(conn, "anthropic_api_key")
+    current_key = database.get_setting(conn, "anthropic_api_key")
     if current_key:
-        st.success(f"API key: ...{current_key[-8:]}")
-        if st.button("Clear API Key"):
-            database.delete_setting(conn, "anthropic_api_key")
-            os.environ.pop("ANTHROPIC_API_KEY", None)
-            st.session_state.advisor = None
-            st.rerun()
+        st.success(f"API key configured: ...{current_key[-8:]}")
     else:
-        new_key = st.text_input("Anthropic API Key", type="password")
+        new_key = st.text_input(
+            "Anthropic API Key", type="password",
+            help="Saved to .env file only — never stored in the cloud database.",
+        )
         if st.button("Save Key") and new_key:
-            database.set_setting(conn, "anthropic_api_key", new_key)
+            database.set_setting(conn, "anthropic_api_key", new_key)  # saves to .env only
             os.environ["ANTHROPIC_API_KEY"] = new_key
             st.session_state.advisor = None
             st.rerun()
@@ -609,15 +607,21 @@ def settings_page():
     4. Get your chat ID: `https://api.telegram.org/bot<TOKEN>/getUpdates`
     """)
 
-    token = st.text_input("Bot Token", value=database.get_setting(conn, "telegram_bot_token"), type="password")
-    chat = st.text_input("Chat ID", value=database.get_setting(conn, "telegram_chat_id"))
+    token = st.text_input(
+        "Bot Token", value=database.get_setting(conn, "telegram_bot_token"), type="password",
+        help="Saved to .env file only — never stored in the cloud database.",
+    )
+    chat = st.text_input(
+        "Chat ID", value=database.get_setting(conn, "telegram_chat_id"),
+        help="Saved to .env file only — never stored in the cloud database.",
+    )
 
     c1, c2 = st.columns(2)
     if c1.button("Save", key="save_telegram"):
         if token and chat:
-            database.set_setting(conn, "telegram_bot_token", token)
-            database.set_setting(conn, "telegram_chat_id", chat)
-            st.success("Saved!")
+            database.set_setting(conn, "telegram_bot_token", token)  # saves to .env only
+            database.set_setting(conn, "telegram_chat_id", chat)  # saves to .env only
+            st.success("Saved to .env!")
     if c2.button("Test Connection", key="test_telegram"):
         if token:
             try:

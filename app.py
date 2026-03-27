@@ -75,12 +75,12 @@ monarch_auto_sync()
 # ═══════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     conn = get_conn()
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "") or database.get_setting(conn, "anthropic_api_key")
+    api_key = database.get_setting(conn, "anthropic_api_key")
     if not api_key:
         st.markdown("### Setup")
         api_key_input = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant-...")
         if api_key_input:
-            database.set_setting(conn, "anthropic_api_key", api_key_input)
+            database.set_setting(conn, "anthropic_api_key", api_key_input)  # saves to .env only
             os.environ["ANTHROPIC_API_KEY"] = api_key_input
             st.session_state.advisor = None
             conn.close()

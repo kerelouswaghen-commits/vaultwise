@@ -723,20 +723,23 @@ def get_financial_context(conn) -> dict:
 
 # ── Settings ──────────────────────────────────────────────────────────────
 
+_SENSITIVE_KEYS = {
+    "anthropic_api_key": "ANTHROPIC_API_KEY",
+    "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
+    "telegram_chat_id": "TELEGRAM_CHAT_ID",
+    "telegram_chat_id_maggie": "TELEGRAM_CHAT_ID_MAGGIE",
+}
+
+
 def get_setting(conn, key: str, default: str = "") -> str:
-    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
-    if row and row["value"]:
-        return row["value"]
-    # Fallback: check .env file
     import os
-    ENV_KEYS = {
-        "anthropic_api_key": "ANTHROPIC_API_KEY",
-        "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
-        "telegram_chat_id": "TELEGRAM_CHAT_ID",
-        "telegram_chat_id_maggie": "TELEGRAM_CHAT_ID_MAGGIE",
-    }
-    env_name = ENV_KEYS.get(key)
+    # Sensitive keys: check env vars first (st.secrets auto-populates os.environ on Cloud)
+    env_name = _SENSITIVE_KEYS.get(key)
     if env_name:
+        val = os.environ.get(env_name, "")
+        if val:
+            return val
+        # Fallback: parse .env file directly (local dev without dotenv)
         env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
         if os.path.exists(env_path):
             with open(env_path, "r") as f:
@@ -744,32 +747,32 @@ def get_setting(conn, key: str, default: str = "") -> str:
                     if line.startswith(env_name + "="):
                         val = line.strip().split("=", 1)[1]
                         if val:
-                            # Restore to DB for next time
-                            set_setting(conn, key, val)
                             return val
+        return default
+    # Non-sensitive keys: read from DB as before
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    if row and row["value"]:
+        return row["value"]
     return default
 
 
 def set_setting(conn, key: str, value: str) -> None:
+    # Sensitive keys: persist to .env only, never to DB
+    if key in _SENSITIVE_KEYS:
+        _persist_to_env(key, value)
+        return
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?, updated_ts = datetime('now')",
         (key, value, value),
     )
     conn.commit()
-    # Persist critical keys to .env so they survive DB resets
     _persist_to_env(key, value)
 
 
 def _persist_to_env(key: str, value: str) -> None:
     """Save critical settings to .env file as backup."""
     import os
-    ENV_KEYS = {
-        "anthropic_api_key": "ANTHROPIC_API_KEY",
-        "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
-        "telegram_chat_id": "TELEGRAM_CHAT_ID",
-        "telegram_chat_id_maggie": "TELEGRAM_CHAT_ID_MAGGIE",
-    }
-    env_name = ENV_KEYS.get(key)
+    env_name = _SENSITIVE_KEYS.get(key)
     if not env_name or not value:
         return
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
