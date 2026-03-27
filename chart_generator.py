@@ -126,7 +126,7 @@ def generate_category_pie_chart(breakdown: list[dict]) -> bytes:
 
 
 def generate_cashflow_chart(months_ahead: int = 66) -> bytes:
-    """Cash flow projection with overlap highlight."""
+    """Cash flow projection chart."""
     df = models.project_cash_flow(months_ahead=months_ahead)
 
     fig = go.Figure()
@@ -149,14 +149,8 @@ def generate_cashflow_chart(months_ahead: int = 66) -> bytes:
         yaxis="y2",
     ))
 
-    # Dual daycare period shading (visual context only)
-    fig.add_vrect(
-        x0="2027-08", x1="2028-08",
-        fillcolor="red", opacity=0.08, line_width=0,
-    )
-
     fig.update_layout(
-        title="Cash Flow Projection: Apr 2026 – Aug 2031",
+        title="Cash Flow Projection",
         xaxis_title="Month",
         yaxis=dict(title="Monthly Net ($)"),
         yaxis2=dict(title="Cumulative ($)", overlaying="y", side="right"),
@@ -207,26 +201,6 @@ def generate_objective_progress_chart(objectives: list[dict]) -> bytes:
         font=dict(size=14),
     )
     return _to_png(fig, width=800, height=max(300, len(labels) * 60 + 100))
-
-
-def generate_daycare_chart() -> bytes:
-    """Stacked bar of daycare costs by child over time."""
-    df = models.project_cash_flow()
-    dc_df = df[df["total_daycare"] > 0]
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=dc_df["month"], y=dc_df["geo_daycare"], name="Geo", marker_color=COLORS["orange"]))
-    fig.add_trace(go.Bar(x=dc_df["month"], y=dc_df["perla_daycare"], name="Perla", marker_color=COLORS["purple"]))
-
-    fig.update_layout(
-        barmode="stack",
-        title="Daycare Costs by Child",
-        xaxis_title="Month",
-        yaxis_title="Monthly Cost ($)",
-        height=400,
-        font=dict(size=12),
-    )
-    return _to_png(fig, width=900, height=400)
 
 
 def _empty_chart(message: str) -> bytes:

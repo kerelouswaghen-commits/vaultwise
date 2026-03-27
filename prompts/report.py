@@ -67,7 +67,7 @@ TODAY'S DATE: {today.isoformat()}
 FAMILY CONTEXT:
 - Kero (Premera, $190K) + Maggie (Boeing, $130K), two kids: Geo (born Jun 2023) and Perla (born Jan 2026)
 - Combined take-home: ~${config.INCOME['combined_monthly_take_home']:,}/mo
-- Non-daycare monthly expenses: ~${config.NON_DAYCARE_MONTHLY:,}
+- Monthly expenses: ~${config.MONTHLY_EXPENSES:,}
 
 SAVINGS TARGET:
 - Monthly savings target: ${savings_target:,}/mo

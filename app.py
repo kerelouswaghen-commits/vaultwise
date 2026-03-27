@@ -28,7 +28,7 @@ from claude_advisor import ClaudeAdvisor
 # ═══════════════════════════════════════════════════════════════════════════
 # CONFIG & INIT
 # ═══════════════════════════════════════════════════════════════════════════
-st.set_page_config(page_title="VaultWise", page_icon="💰", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="VaultWise", page_icon="💰", initial_sidebar_state="expanded")
 
 # PWA support — makes the app feel native on iPhone/Android
 st.components.v1.html("""
@@ -93,6 +93,15 @@ st.markdown("""<style>
 
     /* Dividers */
     hr { border: none; border-top: 1px solid #e8ecf1; margin: 1.2rem 0; }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        [data-testid="stMetricValue"] { font-size: clamp(1rem, 4vw, 1.5rem); }
+        [data-testid="stMetricLabel"] { font-size: clamp(0.6rem, 2vw, 0.75rem); }
+        .cat-card { padding: 12px; }
+        [data-testid="stExpander"] summary { font-size: 0.9rem; }
+    }
+    [data-testid="stHorizontalBlock"] { flex-wrap: wrap; gap: 4px; }
 </style>""", unsafe_allow_html=True)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", config.DB_FILENAME)
@@ -208,7 +217,7 @@ def normalize_transactions(transactions: list, year_hint: str = "") -> list:
 # ═══════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### 💰 Family Budget")
-    st.caption("Kero & Maggie Waghen")
+    st.caption(config.FAMILY_DISPLAY_NAME)
 
     conn = get_conn()
     api_key = os.environ.get("ANTHROPIC_API_KEY", "") or database.get_setting(conn, "anthropic_api_key")
@@ -238,11 +247,8 @@ with st.sidebar:
 
     page = st.radio("Navigate", [
         "Dashboard",
-        "Upload Statements",
         "Transactions",
-        "Financial Advisor",
-        "Forecasts & Goals",
-        "Reports & Telegram",
+        "Insights & Advisor",
         "Settings",
     ], label_visibility="collapsed")
 
@@ -286,7 +292,6 @@ def make_monthly_net_chart(df, height=340, ci_low=None, ci_high=None):
         marker_line_width=0,
         hovertemplate="<b>%{x}</b><br>Net: %{y:$,.0f}<extra></extra>",
     ))
-    fig.add_vrect(x0="2027-08", x1="2028-08", fillcolor=PALETTE["red"], opacity=0.06, line_width=0)
     fig.add_hline(y=0, line_color=PALETTE["gray_light"], line_width=1)
 
     fig.update_layout(**CHART_LAYOUT, height=height, showlegend=False,
@@ -320,7 +325,6 @@ def make_cumulative_chart(df, height=370, ci_low=None, ci_high=None):
         name="Projected savings",
     ))
 
-    fig.add_vrect(x0="2027-08", x1="2028-08", fillcolor=PALETTE["red"], opacity=0.06, line_width=0)
     fig.add_hline(y=0, line_color=PALETTE["red"], line_width=1, line_dash="dot",
                   annotation_text="Break-even line", annotation_font=dict(size=9, color=PALETTE["red"]),
                   annotation_position="bottom right")
@@ -334,40 +338,21 @@ def make_cumulative_chart(df, height=370, ci_low=None, ci_high=None):
         font=dict(color=PALETTE["red"], size=11),
         bgcolor="white", bordercolor=PALETTE["red"], borderwidth=1, borderpad=4,
     )
-    aug31 = df[df["month"] == "2031-08"]
-    if len(aug31) > 0:
-        fig.add_annotation(
-            x="2031-08", y=aug31.iloc[0]["cumulative"],
-            text=f"<b>Final: ${aug31.iloc[0]['cumulative']:,.0f}</b>",
-            showarrow=True, arrowhead=2, arrowcolor=PALETTE["green"],
-            font=dict(color=PALETTE["green"], size=11),
-            bgcolor="white", bordercolor=PALETTE["green"], borderwidth=1, borderpad=4,
-        )
+    # Final month annotation
+    last_row = df.iloc[-1]
+    fig.add_annotation(
+        x=last_row["month"], y=last_row["cumulative"],
+        text=f"<b>Final: ${last_row['cumulative']:,.0f}</b>",
+        showarrow=True, arrowhead=2, arrowcolor=PALETTE["green"],
+        font=dict(color=PALETTE["green"], size=11),
+        bgcolor="white", bordercolor=PALETTE["green"], borderwidth=1, borderpad=4,
+    )
 
     fig.update_layout(**CHART_LAYOUT, height=height,
                      legend=dict(orientation="h", yanchor="bottom", y=1.02, font_size=10),
                      yaxis=dict(title="Cumulative Savings ($)", gridcolor="#f3f4f6",
                                zeroline=False, tickformat="$,.0f"),
                      xaxis=dict(gridcolor="#f3f4f6", dtick="M6"))
-    return fig
-
-
-def make_daycare_chart(df, height=320):
-    """Stacked bar of daycare costs by child."""
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=df["month"], y=df["geo_daycare"], name="Geo",
-                         marker_color=PALETTE["amber"],
-                         hovertemplate="Geo: $%{y:,.0f}<extra></extra>"))
-    fig.add_trace(go.Bar(x=df["month"], y=df["perla_daycare"], name="Perla",
-                         marker_color=PALETTE["purple"],
-                         hovertemplate="Perla: $%{y:,.0f}<extra></extra>"))
-    # Overlap annotation
-    fig.add_vrect(x0="2027-08", x1="2028-08", fillcolor=PALETTE["red"], opacity=0.06, line_width=0)
-
-    fig.update_layout(**CHART_LAYOUT, height=height, barmode="stack",
-                     yaxis=dict(title="Daycare $/month", gridcolor="#f3f4f6", tickformat="$,.0f"),
-                     xaxis=dict(gridcolor="#f3f4f6", dtick="M6"),
-                     legend=dict(orientation="h", yanchor="bottom", y=1.02, font_size=11))
     return fig
 
 
@@ -379,7 +364,6 @@ if page == "Dashboard":
 
     conn = get_conn()
     txn_count = database.get_transaction_count(conn)
-    gap_info = models.compute_overlap_gap()
 
     st.markdown("## Dashboard")
 
@@ -394,1238 +378,1109 @@ if page == "Dashboard":
     elif data_age > 7:
         st.info(f"Data as of {latest_txn.isoformat()} ({data_age} days ago). Upload recent statements to stay current.")
 
-    # Two views as tabs — Monthly Spending first (primary view)
-    dash_tab2, dash_tab1 = st.tabs(["Monthly Spending", "Cash Flow Projection"])
-
-    # ── VIEW 1: Cash Flow Projection ──────────────────────────────────────
-    with dash_tab1:
-        df = models.project_cash_flow()
-        overlap_df = df[df["phase"] == "OVERLAP"]
-        aug31 = df[df["month"] == "2031-08"].iloc[0]
-
-        # Monte Carlo confidence intervals
-        ci_low, ci_high = None, None
-        try:
-            mc = analytics.simulate_cash_flow(conn, n_simulations=300)
-            ci_low, ci_high = mc.ci_low, mc.ci_high
-        except Exception:
-            pass
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Pre-Overlap Savings", f"${gap_info['pre_overlap_savings']:,.0f}")
-        c2.metric("Gap to Close",
-                  f"${gap_info['gap']:,.0f}" if gap_info['gap'] > 0 else "On track",
-                  delta=f"${gap_info['monthly_savings_needed']:,.0f}/mo needed" if gap_info['gap'] > 0 else "Surplus",
-                  delta_color="inverse" if gap_info['gap'] > 0 else "normal")
-        c3.metric("Lowest Point", f"${gap_info['lowest_point']:,.0f}",
-                  delta=gap_info['lowest_month'], delta_color="off")
-        c4.metric("Final (Aug 2031)", f"${gap_info['final_surplus']:,.0f}")
-
-        if txn_count == 0:
-            st.info("Upload your first bank statement to see real spending data overlaid on projections.")
-
-        tab_net, tab_cum, tab_dc = st.tabs(["Monthly Net", "Cumulative Savings", "Daycare Costs"])
-        with tab_net:
-            st.plotly_chart(make_monthly_net_chart(df), use_container_width=True)
-        with tab_cum:
-            st.plotly_chart(make_cumulative_chart(df, ci_low=ci_low, ci_high=ci_high), use_container_width=True)
-        with tab_dc:
-            st.plotly_chart(make_daycare_chart(df), use_container_width=True)
-
-    # ── VIEW 2: Monthly Spending Drilldown ────────────────────────────────
-    with dash_tab2:
-        if txn_count == 0:
-            st.info("Upload statements to see monthly spending breakdown.")
-            conn.close()
-            st.stop()
-
-        available_months = database.get_available_months(conn)
-        if not available_months:
-            st.info("No transaction data yet.")
-            conn.close()
-            st.stop()
-
-        # Month navigation
-        if "selected_month_idx" not in st.session_state:
-            st.session_state.selected_month_idx = 0
-
-        nav_left, nav_label, nav_right = st.columns([1, 3, 1])
-        with nav_left:
-            if st.button("← Previous", disabled=st.session_state.selected_month_idx >= len(available_months) - 1,
-                         use_container_width=True):
-                st.session_state.selected_month_idx += 1
-                st.rerun()
-        with nav_right:
-            if st.button("Next →", disabled=st.session_state.selected_month_idx <= 0,
-                         use_container_width=True):
-                st.session_state.selected_month_idx -= 1
-                st.rerun()
-
-        idx = min(st.session_state.selected_month_idx, len(available_months) - 1)
-        selected_month = available_months[idx]
-
-        from calendar import month_name as _mn
-        _y, _m = selected_month.split("-")
-        month_display = f"{_mn[int(_m)]} {_y}"
-
-        with nav_label:
-            st.markdown(f"### {month_display}")
-
-        # Get this month's data
-        _raw_breakdown = database.get_monthly_category_breakdown(conn, selected_month)
-        _active_cats_dash = category_engine.get_active_categories(conn)
-        month_breakdown = [c for c in _raw_breakdown if c["category"] in _active_cats_dash]
-        if not month_breakdown:
-            st.info(f"No spending data for {month_display}.")
-            conn.close()
-            st.stop()
-
-        # Top-level metrics
-        total_spent = sum(abs(c["total"]) for c in month_breakdown)
-        txn_total = sum(c["txn_count"] for c in month_breakdown)
-        top_cat = month_breakdown[0] if month_breakdown else None
-
-        # ── Savings Goal Tracker ──────────────────────────────────────
-        _sel_year, _sel_month = int(_y), int(_m)
-        _income_data = models.get_income_for_month(_sel_year, _sel_month)
-        _monthly_income = _income_data["total_income"] if isinstance(_income_data, dict) else _income_data
-        savings_target = int(database.get_setting(conn, "monthly_savings_target", "2000"))
-
-        # Bonus toggles (default OFF for conservative planning)
-        _bonus_col1, _bonus_col2 = st.columns(2)
-        _kero_bonus_on = _bonus_col1.checkbox("Include Kero bonus ($1,500/mo)", value=False, key="dash_kero_bonus")
-        _maggie_bonus_on = _bonus_col2.checkbox("Include Maggie bonus ($417/mo)", value=False, key="dash_maggie_bonus")
-        _kero_bonus_val = _income_data.get("kero_bonus", 0) if isinstance(_income_data, dict) else 0
-        _maggie_bonus_val = _income_data.get("maggie_bonus", 0) if isinstance(_income_data, dict) else 0
-        if not _kero_bonus_on:
-            _monthly_income -= _kero_bonus_val
-        if not _maggie_bonus_on:
-            _monthly_income -= _maggie_bonus_val
-
-        # Known fixed costs (mortgage, car, loans, church, etc.) — always happen even if not in transaction data
-        _fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
-        # Daycare for this month
-        _daycare_data = models.get_daycare_cost_for_month(_sel_year, _sel_month)
-        _daycare_cost = _daycare_data["total_daycare"] if isinstance(_daycare_data, dict) else _daycare_data
-
-        # Total outflow = fixed costs + daycare + discretionary (from transactions)
-        # Avoid double-counting: subtract any fixed-category spending already in transaction data
-        # (e.g., PSE, mortgage if checking data is loaded)
-        _fixed_cats = {"Housing & Utilities", "Debt Payments", "Giving & Church", "Family Support", "Transportation"}
-        _txn_fixed = sum(abs(c["total"]) for c in month_breakdown if c["category"] in _fixed_cats)
-        _txn_discretionary = total_spent - _txn_fixed
-
-        # Use the HIGHER of config fixed costs or actual fixed-category transactions
-        _effective_fixed = max(_fixed_costs, _txn_fixed)
-        _total_outflow = _effective_fixed + _daycare_cost + _txn_discretionary
-
-        _budget_limit = _monthly_income - savings_target  # max you can spend and still save
-        _saved = _monthly_income - _total_outflow
-        _gap = _saved - savings_target
-        _on_track = _saved >= savings_target
-        _spent_pct = min(_total_outflow / _budget_limit * 100, 100) if _budget_limit > 0 else 100
-
-        # Gauge colors
-        _D = "$"
-        if _on_track:
-            _gauge_color = "#22c55e"
-            _status_text = f"ON TRACK — {_D}{_gap:,.0f} above target"
-            _status_icon = "✅"
-        elif _saved > 0:
-            _gauge_color = "#f59e0b"
-            _status_text = f"AT RISK — {_D}{abs(_gap):,.0f} short of target"
-            _status_icon = "⚠️"
-        else:
-            _gauge_color = "#ef4444"
-            _status_text = f"OVER BUDGET — {_D}{abs(_saved):,.0f} in the red"
-            _status_icon = "🔴"
-
-        _D = "$"
-        _gauge_html = (
-            f'<div style="background:#f8f9fb;border:1px solid #e2e6ed;border-radius:14px;padding:16px 20px;margin-bottom:16px;">'
-            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-            f'<span style="font-weight:700;font-size:1rem;">🎯 {month_display} Savings Goal</span>'
-            f'<span style="font-weight:700;font-size:1.1rem;color:{_gauge_color};">{_status_icon} {_D}{_saved:,.0f} saved</span>'
-            f'</div>'
-            f'<div style="height:12px;border-radius:6px;background:#e5e7eb;overflow:hidden;margin:8px 0;">'
-            f'<div style="height:100%;width:{min(_spent_pct, 100):.0f}%;background:{_gauge_color};border-radius:6px;transition:width 0.3s;"></div>'
-            f'</div>'
-            f'<div style="display:flex;justify-content:space-between;font-size:0.82rem;color:#6b7280;margin-top:4px;">'
-            f'<span>{_D}{_total_outflow:,.0f} est. total (fixed + tracked) of {_D}{_budget_limit:,.0f} budget</span>'
-            f'<span>Target: {_D}{savings_target:,}/mo</span>'
-            f'</div>'
-            f'<div style="font-size:0.78rem;color:#9ca3af;margin-top:2px;">Fixed bills: {_D}{_effective_fixed:,.0f} · Discretionary: {_D}{_txn_discretionary:,.0f} · Daycare: {_D}{_daycare_cost:,.0f}</div>'
-            f'<div style="font-size:0.85rem;color:{_gauge_color};font-weight:600;margin-top:6px;">{_status_text}</div>'
-            f'</div>'
-        )
-        st.markdown(_gauge_html, unsafe_allow_html=True)
-
-        # ── Daily Budget + Gap Closer ─────────────────────────────────
-        _disc_budget = _monthly_income - _effective_fixed - _daycare_cost - savings_target
-        _discretionary_left = max(_disc_budget - _txn_discretionary, 0)
-        _over_budget = max(_txn_discretionary - _disc_budget, 0)
-
-        from calendar import monthrange as _monthrange
-        _days_in_month = _monthrange(_sel_year, _sel_month)[1]
-        _days_left = max(_days_in_month - min(date.today().day, _days_in_month), 1) if (date.today().year, date.today().month) == (_sel_year, _sel_month) else 0
-
-        _D = "$"
-        if _days_left > 0:
-            _daily_left = _discretionary_left / _days_left
-            if _discretionary_left > 0:
-                _pace_html = f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin-bottom:12px;"><span style="font-size:1.1rem;font-weight:700;color:#22c55e;">💰 {_D}{_daily_left:,.0f}/day</span> <span style="color:#6b7280;">for the next {_days_left} days to hit your {_D}{savings_target:,} target</span></div>'
-            else:
-                _pace_html = f'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;margin-bottom:12px;"><span style="font-size:1.1rem;font-weight:700;color:#ef4444;">🛑 FREEZE spending</span> <span style="color:#6b7280;">for {_days_left} days — you\'re {_D}{_over_budget:,.0f} over your discretionary budget</span></div>'
-            st.markdown(_pace_html, unsafe_allow_html=True)
-
-        # Gap Closer — Claude-written actions (only if over budget)
-        if _over_budget > 0:
-            _gap_cache_key = f"gap_closer_{selected_month}_{_over_budget:.0f}"
-            if _gap_cache_key not in st.session_state:
-                st.session_state[_gap_cache_key] = None
-
-            if st.session_state[_gap_cache_key] is None:
-                advisor = get_advisor()
-                if advisor:
-                    with st.spinner("Analyzing your spending to find savings..."):
-                        try:
-                            _gap_txns = conn.execute(
-                                """SELECT date, description, amount, category FROM transactions
-                                   WHERE strftime('%Y-%m', date) = ? AND amount < 0 ORDER BY amount ASC""",
-                                (selected_month,),
-                            ).fetchall()
-                            _gap_txn_text = "\n".join(f"{t['date']} | {t['description']} | {_D}{t['amount']:,.2f} | {t['category']}" for t in _gap_txns)
-                            _gap_cat_summary = "\n".join(f"  {c['category']}: {_D}{abs(c['total']):,.2f} ({c['txn_count']} txns)" for c in month_breakdown)
-
-                            _gap_result = advisor.generate_gap_closer(
-                                gap=_over_budget,
-                                discretionary_spent=_txn_discretionary,
-                                discretionary_budget=_disc_budget,
-                                days_left=_days_left,
-                                savings_target=savings_target,
-                                transactions_text=_gap_txn_text,
-                                category_summary=_gap_cat_summary,
-                            )
-                            st.session_state[_gap_cache_key] = _gap_result
-                        except Exception as _e:
-                            st.session_state[_gap_cache_key] = {"error": str(_e)}
-
-            _gap_data = st.session_state.get(_gap_cache_key)
-            if _gap_data and "actions" in _gap_data:
-                st.markdown(f"#### 🔴 Close Your {_D}{_over_budget:,.0f} Gap — Do These 3 Things")
-                _cumulative_recovery = 0
-                for _act in _gap_data.get("actions", [])[:3]:
-                    _recovery = _act.get("recovery", 0)
-                    _cumulative_recovery += _recovery
-                    _gap_remaining = max(_over_budget - _cumulative_recovery, 0)
-                    _pct_closed = min(_cumulative_recovery / _over_budget * 100, 100) if _over_budget > 0 else 0
-
-                    _act_html = (
-                        f'<div style="background:white;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:8px;">'
-                        f'<div style="font-weight:700;color:#1a1a2e;">{_act.get("rank", "")}. {_act.get("category", "")} — {_act.get("merchant", "")}</div>'
-                        f'<div style="color:#4b5563;margin:6px 0;">{_act.get("action", "")}</div>'
-                        f'<div style="display:flex;align-items:center;gap:10px;">'
-                        f'<div style="flex:1;height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden;">'
-                        f'<div style="height:100%;width:{_pct_closed:.0f}%;background:#22c55e;border-radius:4px;"></div></div>'
-                        f'<span style="font-size:0.85rem;color:#6b7280;">Gap: {_D}{_gap_remaining:,.0f}</span>'
-                        f'</div></div>'
-                    )
-                    st.markdown(_act_html, unsafe_allow_html=True)
-
-                _total_rec = _gap_data.get("total_recovery", _cumulative_recovery)
-                _msg = _gap_data.get("message", "")
-                if _msg:
-                    _summary_color = "#22c55e" if _total_rec >= _over_budget else "#f59e0b"
-                    st.markdown(f'<div style="background:#f8f9fb;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:{_summary_color};font-weight:600;">✅ {_msg}</div>', unsafe_allow_html=True)
-
-        # ── "Need Help Achieving Your Target" chat ─────────────────────
-        if "savings_chat_history" not in st.session_state:
-            st.session_state.savings_chat_history = []
-        if "savings_chat_month" not in st.session_state:
-            st.session_state.savings_chat_month = ""
-        if st.session_state.savings_chat_month != selected_month:
-            st.session_state.savings_chat_history = []
-            st.session_state.savings_chat_month = selected_month
-
-        with st.expander("🎯 Need Help Achieving Your Target?", expanded=len(st.session_state.savings_chat_history) > 0):
-            for msg in st.session_state.savings_chat_history:
-                with st.chat_message(msg["role"]):
-                    st.markdown(escape_dollars(msg["content"]))
-
-            _savings_q = st.chat_input(
-                "e.g. 'How can I realistically save $2,000 this month?' or 'What if I cut dining to $200?'",
-                key="savings_chat_input",
-            )
-            if _savings_q:
-                with st.chat_message("user"):
-                    st.markdown(escape_dollars(_savings_q))
-                st.session_state.savings_chat_history.append({"role": "user", "content": _savings_q})
-
-                # Build rich savings context
-                _sav_txns = conn.execute(
-                    """SELECT date, description, amount, category FROM transactions
-                       WHERE strftime('%Y-%m', date) = ? AND amount < 0 ORDER BY amount ASC""",
-                    (selected_month,),
-                ).fetchall()
-                _sav_txn_text = "\n".join(f"{t['date']} | {t['description']} | ${t['amount']:,.2f} | {t['category']}" for t in _sav_txns)
-                _sav_cat_text = "\n".join(f"  {c['category']}: ${abs(c['total']):,.2f} ({c['txn_count']} txns)" for c in month_breakdown)
-
-                # Get forecast data for context
-                _forecast_text = ""
-                for _cat in [c["category"] for c in month_breakdown[:6]]:
-                    _pf = analytics_cache.get_cached_prophet(conn, _cat)
-                    if _pf and _pf.get("forecast"):
-                        _next = _pf["forecast"][0]
-                        _forecast_text += f"  {_cat}: predicted ${_next['predicted']:,.0f} next month\n"
-
-                _savings_context = (
-                    f"SAVINGS SITUATION for {month_display}:\n"
-                    f"- Income (no bonus): ${_monthly_income:,.0f}\n"
-                    f"- Fixed bills: ${_effective_fixed:,.0f}\n"
-                    f"- Savings target: ${savings_target:,}/mo\n"
-                    f"- Discretionary budget: ${_disc_budget:,.0f}\n"
-                    f"- Discretionary spent: ${_txn_discretionary:,.0f}\n"
-                    f"- Over budget by: ${_over_budget:,.0f}\n"
-                    f"- Days left in month: {_days_left}\n"
-                    f"- Saved so far: ${_saved:,.0f}\n\n"
-                    f"CATEGORY BREAKDOWN:\n{_sav_cat_text}\n\n"
-                    f"FORECASTS FOR NEXT MONTH:\n{_forecast_text}\n"
-                    f"ALL TRANSACTIONS:\n{_sav_txn_text}\n\n"
-                    f"IMPORTANT: Be realistic. Items already purchased may not be returnable. "
-                    f"Focus on: reducing remaining spending this month, planning next month's budget, "
-                    f"identifying habits to change, and using forecast data to prevent future overages."
-                )
-
-                advisor = get_advisor()
-                if advisor:
-                    with st.chat_message("assistant"):
-                        with st.spinner("Analyzing your savings options..."):
-                            try:
-                                result = advisor.get_advisor_response(
-                                    user_message=f"{_savings_context}\n\nUser question: {_savings_q}",
-                                    conversation_history=st.session_state.savings_chat_history[:-1],
-                                    financial_context={"month": selected_month, "savings_target": savings_target, "gap": _over_budget},
-                                    tactical_context={},
-                                )
-                                response = result.get("response", str(result))
-                                st.markdown(escape_dollars(response))
-                                st.session_state.savings_chat_history.append({"role": "assistant", "content": response})
-                            except Exception as e:
-                                st.error(f"Could not get a response: {e}")
-                else:
-                    with st.chat_message("assistant"):
-                        st.warning("Set your Anthropic API key in Settings to use the chat.")
-
-        # Detailed financial breakdown
-        _kero_net = _income_data.get("kero_net", 0) if isinstance(_income_data, dict) else 0
-        _maggie_net = _income_data.get("maggie_net", 0) if isinstance(_income_data, dict) else 0
-        if _kero_bonus_on:
-            _kero_net += _kero_bonus_val
-        if _maggie_bonus_on:
-            _maggie_net += _maggie_bonus_val
-
-        with st.expander("Monthly Budget Breakdown", expanded=False):
-
-            _left, _right = st.columns(2)
-            with _left:
-                st.markdown("**💵 Money In**")
-                _D = "$"
-                _in_html = (
-                    f'<table style="width:100%;font-size:0.9rem;border-collapse:collapse;">'
-                    f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:4px 0;">Kero (Premera)</td><td style="text-align:right;font-weight:600;">{_D}{_kero_net:,.0f}</td></tr>'
-                    f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:4px 0;">Maggie (Boeing)</td><td style="text-align:right;font-weight:600;">{_D}{_maggie_net:,.0f}</td></tr>'
-                    f'<tr style="border-bottom:2px solid #1a1a2e;"><td style="padding:6px 0;font-weight:700;">Total Income</td><td style="text-align:right;font-weight:700;font-size:1rem;">{_D}{_monthly_income:,.0f}</td></tr>'
-                    f'</table>'
-                )
-                st.markdown(_in_html, unsafe_allow_html=True)
-
-                st.markdown("")
-                st.markdown("**🏠 Fixed Monthly Bills**")
-                _fixed_groups = {
-                    "Mortgage": config.FIXED_MONTHLY_EXPENSES.get("Mortgage (Mr. Cooper 6.49%)", 0),
-                    "Car (loan + insurance)": config.FIXED_MONTHLY_EXPENSES.get("Auto Loan (Chase #2102)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Car Insurance (CCS Country)", 0),
-                    "Student Loans": config.FIXED_MONTHLY_EXPENSES.get("Student Loan 1", 0) + config.FIXED_MONTHLY_EXPENSES.get("Student Loan 2", 0),
-                    "Church & Family": config.FIXED_MONTHLY_EXPENSES.get("Church (Zelle)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Family Support (Nermeen)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Church (CC small donations)", 0),
-                    "Utilities & Internet": config.FIXED_MONTHLY_EXPENSES.get("PSE Electric & Gas", 0) + config.FIXED_MONTHLY_EXPENSES.get("Water/Sewer (NUD)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Internet (Comcast/Xfinity)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Garbage & Recycling", 0),
-                    "Phone (T-Mobile + Mint)": config.FIXED_MONTHLY_EXPENSES.get("T-Mobile", 0) + config.FIXED_MONTHLY_EXPENSES.get("Mint Mobile (normalized)", 0),
-                    "Other fixed": config.FIXED_MONTHLY_EXPENSES.get("Gas (fuel)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Auto Maintenance (normalized)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Renters Insurance (AGI)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Digital Subscriptions", 0) + config.FIXED_MONTHLY_EXPENSES.get("Affirm", 0) + config.FIXED_MONTHLY_EXPENSES.get("CC Interest (card 3072)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Home Improvement (normalized)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Travel (normalized)", 0),
-                }
-                _bills_html = '<table style="width:100%;font-size:0.85rem;border-collapse:collapse;">'
-                for label, amt in _fixed_groups.items():
-                    _bills_html += f'<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:3px 0;color:#6b7280;">{label}</td><td style="text-align:right;">{_D}{amt:,.0f}</td></tr>'
-                if _daycare_cost > 0:
-                    _bills_html += f'<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:3px 0;color:#6b7280;">Daycare</td><td style="text-align:right;">{_D}{_daycare_cost:,.0f}</td></tr>'
-                _bills_html += f'<tr style="border-top:2px solid #1a1a2e;"><td style="padding:5px 0;font-weight:700;">Total Fixed</td><td style="text-align:right;font-weight:700;">{_D}{_effective_fixed + _daycare_cost:,.0f}</td></tr>'
-                _bills_html += '</table>'
-                st.markdown(_bills_html, unsafe_allow_html=True)
-
-            with _right:
-                st.markdown("**🧮 The Math**")
-                _disc_budget = _monthly_income - _effective_fixed - _daycare_cost - savings_target
-                _math_html = (
-                    f'<table style="width:100%;font-size:0.9rem;border-collapse:collapse;">'
-                    f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 0;">Income</td><td style="text-align:right;font-weight:600;">{_D}{_monthly_income:,.0f}</td></tr>'
-                    f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 0;">− Fixed bills</td><td style="text-align:right;color:#ef4444;">−{_D}{_effective_fixed + _daycare_cost:,.0f}</td></tr>'
-                    f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 0;">− Savings target</td><td style="text-align:right;color:#7c3aed;">−{_D}{savings_target:,.0f}</td></tr>'
-                    f'<tr style="border-bottom:2px solid #1a1a2e;background:#f0fdf4;"><td style="padding:6px 0;font-weight:700;">= Discretionary budget</td><td style="text-align:right;font-weight:700;font-size:1.05rem;">{_D}{_disc_budget:,.0f}</td></tr>'
-                    f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 0;">− Spent this month</td><td style="text-align:right;color:#ef4444;">−{_D}{_txn_discretionary:,.0f}</td></tr>'
-                    f'<tr style="background:{"#f0fdf4" if _discretionary_left > 0 else "#fef2f2"};"><td style="padding:6px 0;font-weight:700;">= Still available</td>'
-                    f'<td style="text-align:right;font-weight:700;font-size:1.1rem;color:{"#22c55e" if _discretionary_left > 0 else "#ef4444"};">{_D}{_discretionary_left:,.0f}</td></tr>'
-                    f'</table>'
-                )
-                st.markdown(_math_html, unsafe_allow_html=True)
-
-                st.markdown("")
-                st.markdown("**📊 Summary**")
-                _s1, _s2, _s3 = st.columns(3)
-                _s1.metric("Saved", f"${_saved:,.0f}")
-                _s2.metric("Target", f"${savings_target:,}")
-                _s3.metric("Gap", f"${_gap:+,.0f}", delta_color="normal" if _gap >= 0 else "inverse")
-
-        # ── Cache integration ──────────────────────────────────────────────
-        # Check cache staleness and offer refresh
-        _cache_stale = analytics_cache.is_stale(conn)
-        if _cache_stale:
-            st.warning(
-                "Analytics cache is stale (last refreshed: "
-                f"{analytics_cache.get_last_refresh_display(conn)}). "
-                "Hit **Refresh Analytics** below to update trend data."
-            )
-        if st.button("Refresh Analytics", type="secondary" if not _cache_stale else "primary"):
-            with st.spinner("Refreshing analytics cache (trends, forecasts, merchants)..."):
-                analytics_cache.refresh_all(conn)
-            st.rerun()
-
-        # Read all cached trend data (instant reads from DB)
-        cats = [c["category"] for c in month_breakdown]
-        vals = [abs(c["total"]) for c in month_breakdown]
-
-        _default_trend_dict = {
-            "category": "", "direction": "stable", "slope_per_month": 0,
-            "r_squared": 0, "current": 0, "mean": 0, "std": 0,
-            "pct_vs_mean": 0, "months_analyzed": 0, "forecast_next": 0,
-            "severity": "normal", "action": "",
-        }
-
-        trend_results = {}
-        for cat in cats:
-            cached_t = analytics_cache.get_cached_trend(conn, cat)
-            if cached_t:
-                trend_results[cat] = cached_t
-            else:
-                trend_results[cat] = {**_default_trend_dict, "category": cat}
-
-        severity_map = {
-            "critical": {"icon": "🔴", "color": PALETTE["red"], "label": "Needs Action"},
-            "warning": {"icon": "🟠", "color": PALETTE["amber"], "label": "Watch"},
-            "watch": {"icon": "🟡", "color": PALETTE["amber"], "label": "Monitor"},
-            "normal": {"icon": "🟢", "color": PALETTE["green"], "label": "On Track"},
-        }
-
-        direction_icons = {"rising": "↑", "falling": "↓", "stable": "→"}
-
-        # ── Bar chart: color by severity ────────────────────────────────────
-        bar_colors = [
-            severity_map.get(trend_results.get(c, _default_trend_dict).get("severity", "normal"),
-                             severity_map["normal"])["color"]
-            for c in cats
-        ]
-
-        fig = go.Figure(go.Bar(
-            x=vals, y=cats, orientation="h",
-            marker_color=bar_colors, marker_line_width=0,
-            text=[f"${v:,.0f}" for v in vals],
-            textposition="auto", textfont_size=11,
-            hovertemplate="<b>%{y}</b><br>$%{x:,.0f}<extra></extra>",
-        ))
-        fig.update_layout(**CHART_LAYOUT, height=max(350, len(cats) * 38 + 80),
-                         showlegend=False, yaxis=dict(autorange="reversed"),
-                         xaxis=dict(title="Amount ($)", gridcolor="#f3f4f6", tickformat="$,.0f"))
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.caption("Bar color: 🔴 needs action | 🟠 watch | 🟢 on track (based on statistical trend analysis)")
-
-        # ── Ask About This Month (below bar chart, above cards) ──────────
-        if "dash_chat_history" not in st.session_state:
-            st.session_state.dash_chat_history = []
-        if "dash_chat_month" not in st.session_state:
-            st.session_state.dash_chat_month = ""
-        if st.session_state.dash_chat_month != selected_month:
-            st.session_state.dash_chat_history = []
-            st.session_state.dash_chat_month = selected_month
-
-        with st.expander(f"💬 Ask About {month_display}", expanded=len(st.session_state.dash_chat_history) > 0):
-            for msg in st.session_state.dash_chat_history:
-                with st.chat_message(msg["role"]):
-                    st.markdown(escape_dollars(msg["content"]))
-
-            dash_question = st.chat_input(
-                f"Ask about any number on this dashboard, a transaction, or a forecast...",
-                key="dash_chat_input",
-            )
-            if dash_question:
-                with st.chat_message("user"):
-                    st.markdown(escape_dollars(dash_question))
-                st.session_state.dash_chat_history.append({"role": "user", "content": dash_question})
-
-                # Build comprehensive dashboard context
-                _all_txns = conn.execute(
-                    """SELECT date, description, amount, category FROM transactions
-                       WHERE strftime('%Y-%m', date) = ? ORDER BY category, date""",
-                    (selected_month,),
-                ).fetchall()
-                _txn_lines = [f"{t['date']} | {t['description']} | ${t['amount']:,.2f} | {t['category']}" for t in _all_txns]
-                _txn_context = "\n".join(_txn_lines)
-                _cat_summary = "\n".join(f"  {c['category']}: ${abs(c['total']):,.2f} ({c['txn_count']} txns)" for c in month_breakdown)
-
-                # Include dashboard numbers so Claude can explain any value on screen
-                _forecast_lines = ""
-                for _cat in [c["category"] for c in month_breakdown[:8]]:
-                    _pf = analytics_cache.get_cached_prophet(conn, _cat)
-                    if _pf and _pf.get("forecast"):
-                        _next = _pf["forecast"][0]
-                        _forecast_lines += f"  {_cat}: ${_next['predicted']:,.0f} predicted next month\n"
-
-                _dashboard_context = (
-                    f"DASHBOARD DATA for {month_display}:\n"
-                    f"- Income: ${_monthly_income:,.0f} | Fixed bills: ${_effective_fixed:,.0f} | Savings target: ${savings_target:,}\n"
-                    f"- Discretionary budget: ${_disc_budget:,.0f} | Spent: ${_txn_discretionary:,.0f} | Over by: ${_over_budget:,.0f}\n"
-                    f"- Saved: ${_saved:,.0f} | Gap to target: ${_gap:+,.0f}\n"
-                    f"- Total tracked: ${total_spent:,.0f} ({sum(c['txn_count'] for c in month_breakdown)} txns)\n\n"
-                    f"CATEGORY TOTALS:\n{_cat_summary}\n\n"
-                    f"FORECASTS:\n{_forecast_lines}\n"
-                    f"ALL TRANSACTIONS:\n{_txn_context}\n\n"
-                    f"You can explain any number shown on the dashboard, break down any category, "
-                    f"explain any transaction, or interpret any forecast."
-                )
-
-                advisor = get_advisor()
-                if advisor:
-                    with st.chat_message("assistant"):
-                        with st.spinner("Looking at your dashboard data..."):
-                            try:
-                                result = advisor.get_advisor_response(
-                                    user_message=f"{_dashboard_context}\n\nUser question: {dash_question}",
-                                    conversation_history=st.session_state.dash_chat_history[:-1],
-                                    financial_context={"month": selected_month, "month_display": month_display, "total_spent": total_spent},
-                                    tactical_context={},
-                                )
-                                response = result.get("response", str(result))
-                                st.markdown(escape_dollars(response))
-                                st.session_state.dash_chat_history.append({"role": "assistant", "content": response})
-                            except Exception as e:
-                                st.error(f"Could not get a response: {e}")
-                                st.session_state.dash_chat_history.append({"role": "assistant", "content": str(e)})
-                else:
-                    with st.chat_message("assistant"):
-                        st.warning("Set your Anthropic API key in Settings to use the chat.")
-
-        # ── Category Cards from Cache ─────────────────────────────────────
-        st.divider()
-
-        # Claude preventive actions — reads from cache instead of computing inline
-        @st.cache_data(ttl=300, show_spinner=False)
-        def _get_claude_preventive_actions(_month_key: str):
-            """Cache Claude's preventive actions for 5 minutes to avoid repeated API calls."""
-            advisor = get_advisor()
-            if not advisor:
-                return {}
-            _conn = get_conn()
-            cats_payload = []
-            _mb = database.get_monthly_category_breakdown(_conn, _month_key)
-            for cd in _mb:
-                c = cd["category"]
-                _actual_spend = abs(cd.get("total", 0))
-                if _actual_spend == 0:
-                    continue
-                t = analytics_cache.get_cached_trend(_conn, c) or _default_trend_dict
-                _avg = float(t.get("mean", 0))
-                _pct = ((_actual_spend / _avg) - 1) * 100 if _avg > 0 else 0
-                entry = {
-                    "category": c,
-                    "current_spend": _actual_spend,  # Use selected month's actual spend
-                    "historical_avg": _avg,
-                    "historical_std": float(t.get("std", 0)),
-                    "trend_direction": t.get("direction", "stable"),
-                    "slope_per_month": float(t.get("slope_per_month", 0)),
-                    "pct_vs_mean": _pct,  # Recomputed from actual spend
-                    "severity": "critical" if _pct > 115 else ("warning" if _pct > 100 else t.get("severity", "normal")),
-                    "merchants": [],
-                }
-                # Current month merchants (from DB, not stale cache)
-                _cur_merchants = database.get_merchant_breakdown_for_month(_conn, c, _month_key, limit=5)
-                if _cur_merchants:
-                    entry["merchants"] = [m["name"] for m in _cur_merchants]
-                    entry["merchant_details"] = [
-                        {"name": m["name"], "total": abs(m["total"]), "visits": m["visits"],
-                         "avg_per_visit": round(abs(m["total"]) / max(m["visits"], 1), 2)}
-                        for m in _cur_merchants
-                    ]
-                # Cached Prophet forecast
-                cached_pf = analytics_cache.get_cached_prophet(_conn, c)
-                if cached_pf and cached_pf.get("forecast"):
-                    entry["prophet_forecast"] = cached_pf["forecast"]
-                    entry["prophet_trend"] = cached_pf.get("trend_direction", "")
-                    entry["prophet_slope"] = cached_pf.get("trend_slope_monthly", 0)
-                # Cached advanced analytics
-                cached_adv = analytics_cache.get_cached_advanced(_conn, c)
-                if cached_adv:
-                    mk = cached_adv.get("mann_kendall", {})
-                    entry["mann_kendall_trend"] = mk.get("trend", "")
-                    entry["mann_kendall_strength"] = mk.get("strength", "")
-                    entry["mann_kendall_p"] = mk.get("p_value", 1.0)
-                    seas = cached_adv.get("seasonality", {})
-                    entry["seasonal"] = seas.get("has_seasonality", False)
-                    entry["seasonal_strength"] = seas.get("seasonal_strength", 0)
-                    entry["seasonal_period"] = seas.get("period", 0)
-                cats_payload.append(entry)
-            _conn.close()
-
-            try:
-                actions = advisor.generate_preventive_actions(cats_payload)
-                return {a["category"]: a for a in actions if isinstance(a, dict) and "category" in a}
-            except Exception:
-                return {}
-
-        # Only call Claude if we have an API key
-        claude_actions = {}
-        advisor = get_advisor()
-        if advisor:
-            with st.spinner("Analyzing trends & generating preventive actions..."):
-                claude_actions = _get_claude_preventive_actions(selected_month)
-
-        # Helper: build a category card reading from cache
-        def _render_category_card(cat_data, trend_d, severity_info, expanded_default=False):
-            """Render a single category card. `trend_d` is a dict from cache."""
-            cat = cat_data["category"]
-            spent = abs(cat_data["total"])
-            count = cat_data["txn_count"]
-            sev = severity_info
-            t_direction = trend_d.get("direction", "stable")
-            t_current = spent  # Use SELECTED month's actual spend, not cached latest
-            t_mean = float(trend_d.get("mean", 0))
-            t_std = float(trend_d.get("std", 0))
-            t_slope = float(trend_d.get("slope_per_month", 0))
-            t_pct = ((t_current / t_mean) - 1) * 100 if t_mean > 0 else 0  # Recompute from actual spend
-            t_action = trend_d.get("action", "")
-
-            direction_icon = direction_icons.get(t_direction, "→")
-            pct_str = f"+{t_pct:.0f}%" if t_pct > 0 else f"{t_pct:.0f}%"
-
-            # Card class, icon, and bar — ALL use the same color logic
-            fill_pct = min(120, spent / t_mean * 100) if t_mean > 0 else 50
-            if fill_pct > 115:
-                card_class = "cat-card-critical"
-                sev = severity_map["critical"]
-                bar_color = PALETTE["red"]
-            elif fill_pct > 100:
-                card_class = "cat-card-warning"
-                sev = severity_map["warning"]
-                bar_color = PALETTE["amber"]
-            elif fill_pct < 75:
-                card_class = "cat-card-good"
-                sev = {"icon": "🟢", "color": PALETTE["green"], "label": "On Track"}
-                bar_color = PALETTE["green"]
-            else:
-                card_class = "cat-card-good"
-                sev = {"icon": "🟢", "color": PALETTE["green"], "label": "On Track"}
-                bar_color = PALETTE["green"]
-
-            # Prophet forecast inline — from cache
-            prophet_line = ""
-            cached_pf = analytics_cache.get_cached_prophet(conn, cat)
-            if cached_pf and cached_pf.get("forecast"):
-                next_mo = cached_pf["forecast"][0]
-                fc_icon = "↑" if next_mo["predicted"] > t_current else "↓"
-                prophet_line = f'<div style="font-size:0.78rem; color:#7c3aed; margin-top:3px;">🔮 Forecast: <b>${next_mo["predicted"]:,.0f}</b> next month {fc_icon}</div>'
-
-            _card_html = (
-                f'<div class="cat-card {card_class}">'
-                f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
-                f'<span style="font-weight:700;font-size:1rem;">{sev["icon"]} {cat}</span>'
-                f'<span style="font-weight:700;font-size:1.1rem;color:{sev["color"]};">${spent:,.0f}</span>'
-                f'</div>'
-                f'<div class="budget-bar"><div class="budget-fill" style="width:{min(fill_pct, 100):.0f}%;background:{bar_color};"></div></div>'
-                f'<div style="display:flex;justify-content:space-between;font-size:0.8rem;color:#6b7280;margin-top:2px;">'
-                f'<span>{direction_icon} {pct_str} vs avg (${t_mean:,.0f})</span>'
-                f'<span>{count} transactions</span>'
-                f'</div>'
-                f'{prophet_line}'
-                f'</div>'
-            )
-            st.markdown(_card_html, unsafe_allow_html=True)
-
-            # Expandable: history chart + Prophet forecast + merchants + advanced + action
-            with st.expander("Trend, Forecast & Action Plan", expanded=expanded_default):
-                history = database.get_category_monthly_history(conn, cat, months=12)
-
-                if len(history) >= 2:
-                    hist_df = pd.DataFrame(list(reversed(history)))
-                    hist_df["total"] = hist_df["total"].abs()
-
-                    fig = go.Figure()
-
-                    # Historical spending line
-                    fig.add_trace(go.Scatter(
-                        x=hist_df["month"], y=hist_df["total"], mode="lines+markers",
-                        name="Actual", line=dict(color=sev["color"], width=2.5),
-                        marker=dict(size=7, color=sev["color"]),
-                        hovertemplate="<b>%{x}</b><br>Actual: $%{y:,.0f}<extra></extra>",
-                    ))
-
-                    # Prophet forecast overlay from cache — connected to last actual
-                    if cached_pf and cached_pf.get("forecast"):
-                        last_actual_month = hist_df["month"].iloc[-1]
-                        last_actual_val = hist_df["total"].iloc[-1]
-
-                        fc_months = [last_actual_month] + [f["month"] for f in cached_pf["forecast"]]
-                        fc_vals = [last_actual_val] + [f["predicted"] for f in cached_pf["forecast"]]
-                        fc_lower = [last_actual_val] + [f["lower"] for f in cached_pf["forecast"]]
-                        fc_upper = [last_actual_val] + [f["upper"] for f in cached_pf["forecast"]]
-
-                        # Confidence band (connected from last actual)
-                        fig.add_trace(go.Scatter(
-                            x=fc_months + fc_months[::-1],
-                            y=fc_upper + fc_lower[::-1],
-                            fill="toself", fillcolor="rgba(139,92,246,0.12)",
-                            line=dict(width=0), showlegend=True, name="80% CI",
-                            hoverinfo="skip",
-                        ))
-                        # Forecast line (connected from last actual)
-                        fig.add_trace(go.Scatter(
-                            x=fc_months, y=fc_vals, mode="lines+markers",
-                            name="Prophet Forecast",
-                            line=dict(color=PALETTE["purple"], width=2, dash="dash"),
-                            marker=dict(size=7, symbol="diamond", color=PALETTE["purple"]),
-                            hovertemplate="<b>%{x}</b><br>Forecast: $%{y:,.0f}<extra></extra>",
-                        ))
-
-                    # Average line
-                    avg = hist_df["total"].mean()
-                    fig.add_hline(y=avg, line_dash="dot", line_color=PALETTE["gray"],
-                                 annotation_text=f"avg ${avg:,.0f}", annotation_font_size=9)
-
-                    compact_layout = {**CHART_LAYOUT, "margin": dict(t=15, b=25, l=50, r=15)}
-                    fig.update_layout(**compact_layout, height=220,
-                                     legend=dict(orientation="h", yanchor="bottom", y=1.02, font_size=9),
-                                     xaxis=dict(showgrid=False),
-                                     yaxis=dict(gridcolor="#f3f4f6", tickformat="$,.0f"))
-                    st.plotly_chart(fig, use_container_width=True)
-
-                # Stats + merchants + advanced analytics + action in columns
-                col_info, col_action = st.columns([1, 1])
-
-                with col_info:
-                    st.markdown(f"**Trend:** {t_direction.title()} at \\${abs(t_slope):,.0f}/mo")
-                    st.markdown(f"**This month:** \\${t_current:,.0f} | **Avg:** \\${t_mean:,.0f} ± \\${t_std:,.0f}")
-
-                    # Merchant impact — current month spend per merchant (from DB)
-                    _month_merchants = database.get_merchant_breakdown_for_month(conn, cat, selected_month, limit=6)
-                    if _month_merchants:
-                        import re as _re
-                        m_entries = []
-                        for _fbm in _month_merchants:
-                            name = _fbm["name"] or ""
-                            name = _re.sub(r'[A-Z0-9]{8,}', '', name).strip()
-                            name = _re.sub(r'\s+', ' ', name).strip().rstrip(',').strip()
-                            if name and len(name) > 2:
-                                name = name.title() if name.isupper() else name
-                                m_entries.append((name[:25], abs(_fbm["total"])))
-                        if m_entries:
-                            m_names = [e[0] for e in m_entries]
-                            m_vals = [e[1] for e in m_entries]
-                            _vibrant = ["#7c3aed", "#2563eb", "#059669", "#d97706", "#dc2626", "#ec4899"]
-                            m_colors = [_vibrant[i % len(_vibrant)] for i in range(len(m_names))]
-                            st.markdown("**Top merchants this month:**")
-                            fig_m = go.Figure(go.Bar(
-                                x=m_vals[::-1], y=m_names[::-1], orientation="h",
-                                marker_color=m_colors[::-1],
-                                text=[f"${v:,.0f}" for v in m_vals[::-1]],
-                                textposition="auto", textfont=dict(color="white", size=11),
-                                hovertemplate="<b>%{y}</b><br>$%{x:,.0f}<extra></extra>",
-                            ))
-                            fig_m.update_layout(
-                                margin=dict(t=5, b=5, l=5, r=5), height=max(80, len(m_names) * 30 + 20),
-                                xaxis=dict(showgrid=False, showticklabels=False, zeroline=False),
-                                yaxis=dict(autorange=True),
-                                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                                font=dict(size=11),
-                            )
-                            st.plotly_chart(fig_m, use_container_width=True)
-
-                    # Advanced analytics — plain English from cache
-                    cached_adv = analytics_cache.get_cached_advanced(conn, cat)
-                    if cached_adv:
-                        mk = cached_adv.get("mann_kendall", {})
-                        mk_trend = mk.get("trend", "")
-                        mk_strength = mk.get("strength", "none")
-
-                        if mk_trend and mk_trend != "insufficient_data" and mk_strength != "none":
-                            # Plain English trend description
-                            if mk_strength == "strong":
-                                trend_desc = f"Spending is **clearly {'rising' if mk_trend == 'increasing' else 'falling'}** over recent months"
-                            elif mk_strength == "moderate":
-                                trend_desc = f"Spending shows a **moderate {'upward' if mk_trend == 'increasing' else 'downward'}** trend"
-                            else:
-                                trend_desc = f"There's a **slight {'upward' if mk_trend == 'increasing' else 'downward'}** tendency"
-                            st.caption(trend_desc)
-
-                        seas = cached_adv.get("seasonality", {})
-                        if seas.get("has_seasonality") and seas.get("strength", 0) > 0.1:
-                            s_period = seas.get("period", 0)
-                            if s_period == 3:
-                                st.caption("This category has a **quarterly spending pattern** — expect ups and downs every ~3 months")
-                            elif s_period == 12:
-                                st.caption("This category follows a **yearly cycle** — compare to the same month last year for a better picture")
-                            else:
-                                st.caption(f"This category shows a **repeating pattern** every ~{s_period} months")
-
-                with col_action:
-                    # Claude-driven preventive action (reads cache data)
-                    ca = claude_actions.get(cat)
-                    if ca:
-                        sev_icon = {"critical": "🔴", "warning": "🟠", "good": "🟢"}.get(ca.get("severity", "stable"), "🔵")
-                        st.markdown(escape_dollars(f"**{sev_icon} {ca.get('headline', '')}**"))
-
-                        if ca.get("severity") in ("critical", "warning"):
-                            st.error(escape_dollars(ca.get("action", "")))
-                        elif ca.get("severity") == "good":
-                            st.success(escape_dollars(ca.get("action", "")))
-                        else:
-                            st.info(escape_dollars(ca.get("action", "")))
-
-                        if ca.get("forecast_note"):
-                            st.caption(escape_dollars(f"🔮 {ca['forecast_note']}"))
-
-                        impact = ca.get("impact", 0)
-                        if impact:
-                            st.markdown(f"**Impact:** \\${impact:,.0f}/mo toward your savings target")
-                    else:
-                        # Fallback: regression-based action when Claude unavailable
-                        if t_action:
-                            st.info(f"**{t_action}**")
-                        # Prophet forecast note from cache
-                        if cached_pf and cached_pf.get("forecast"):
-                            next_p = cached_pf["forecast"][0]["predicted"]
-                            st.caption(f"🔮 Forecast: \\${next_p:,.0f} next month")
-
-        # ── Three-tier card ordering (POINT 1c) ───────────────────────────
-        # Sort ALL categories using the SAME fill_pct logic as card colors
-        red_cats = []
-        yellow_cats = []
-        green_cats = []
-
-        for cat_data in month_breakdown:
-            cat = cat_data["category"]
-            spent = abs(cat_data["total"])
-            td = trend_results.get(cat, _default_trend_dict)
-            t_mean = float(td.get("mean", 0))
-
-            # Same threshold as card color logic (line ~574)
-            fill_pct = (spent / t_mean * 100) if t_mean > 0 else 50
-            excess = spent - t_mean
-
-            if fill_pct > 115:
-                red_cats.append((cat_data, td, excess))
-            elif fill_pct > 100:
-                yellow_cats.append((cat_data, td, excess))
-            else:
-                green_cats.append((cat_data, td, excess))
-
-        # Sort: RED/YELLOW by highest excess first; GREEN by highest spend first
-        red_cats.sort(key=lambda x: -x[2])
-        yellow_cats.sort(key=lambda x: -x[2])
-        green_cats.sort(key=lambda x: -abs(x[0]["total"]))
-
-        # ── RED: full-width, auto-expanded ────────────────────────────────
-        if red_cats:
-            st.markdown("#### ⚠ Needs Attention")
-            for cat_data, td, _ in red_cats:
-                sev = severity_map.get(td.get("severity", "normal"), severity_map["normal"])
-                _render_category_card(cat_data, td, sev, expanded_default=True)
-
-        # ── YELLOW: 2-column grid, collapsed ──────────────────────────────
-        if yellow_cats:
-            st.markdown("#### 👀 Monitor")
-            cols = st.columns(2)
-            for i, (cat_data, td, _) in enumerate(yellow_cats):
-                sev = severity_map.get(td.get("severity", "normal"), severity_map["normal"])
-                with cols[i % 2]:
-                    _render_category_card(cat_data, td, sev, expanded_default=False)
-
-        # ── GREEN: 2-column grid, collapsed ───────────────────────────────
-        if green_cats:
-            st.markdown("#### ✅ On Track")
-            cols = st.columns(2)
-            for i, (cat_data, td, _) in enumerate(green_cats):
-                sev = severity_map.get(td.get("severity", "normal"), severity_map["normal"])
-                with cols[i % 2]:
-                    _render_category_card(cat_data, td, sev, expanded_default=False)
-
-        # Monthly comparison donut chart
-        st.divider()
-        st.markdown(f"#### Where the Tracked ${total_spent:,.0f} Went")
-        top_cats = month_breakdown[:10]
-        fig = go.Figure(go.Pie(
-            labels=[c["category"] for c in top_cats],
-            values=[abs(c["total"]) for c in top_cats],
-            hole=0.45, textinfo="label+percent", textfont_size=10,
-            marker=dict(colors=CATEGORY_PALETTE[:len(top_cats)]),
-            hovertemplate="%{label}<br>$%{value:,.0f} (%{percent})<extra></extra>",
-        ))
-        fig.update_layout(**CHART_LAYOUT, height=400, showlegend=False,
-                         annotations=[dict(text=f"<b>${total_spent:,.0f}</b>",
-                                          x=0.5, y=0.5, font_size=16, showarrow=False)])
-        st.plotly_chart(fig, use_container_width=True)
-
-    conn.close()
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# PAGE: UPLOAD STATEMENTS
-# ═══════════════════════════════════════════════════════════════════════════
-elif page == "Upload Statements":
-    st.markdown("## Upload Statements")
-    conn = get_conn()
-
-    # ── Coverage heatmap ──────────────────────────────────────────────────
-    coverage = database.get_account_coverage(conn)
-    if coverage:
-        # Build month range from earliest to latest across all accounts
-        all_months_covered = set()
-        all_earliest, all_latest = None, None
-        for info in coverage.values():
-            if info.get("months_covered"):
-                all_months_covered.update(info["months_covered"])
-            if info.get("earliest"):
-                if all_earliest is None or info["earliest"] < all_earliest:
-                    all_earliest = info["earliest"]
-            if info.get("latest"):
-                if all_latest is None or info["latest"] > all_latest:
-                    all_latest = info["latest"]
-
-        # Generate full month range
-        all_months_range = []
-        if all_earliest and all_latest:
-            cur_d = date.fromisoformat(all_earliest).replace(day=1)
-            end_d = date.fromisoformat(all_latest).replace(day=1)
-            while cur_d <= end_d:
-                all_months_range.append(cur_d.strftime("%Y-%m"))
-                if cur_d.month == 12:
-                    cur_d = cur_d.replace(year=cur_d.year + 1, month=1)
-                else:
-                    cur_d = cur_d.replace(month=cur_d.month + 1)
-
-        if all_months_range:
-            # Build heatmap data: rows = accounts, cols = months
-            all_acct_ids = list(config.ACCOUNTS.keys())
-            acct_labels = [config.ACCOUNTS[a]["label"] for a in all_acct_ids]
-            z_data = []
-            total_cells = 0
-            filled_cells = 0
-            for acct_id in all_acct_ids:
-                row = []
-                acct_months = set(coverage.get(acct_id, {}).get("months_covered", []))
-                for m in all_months_range:
-                    total_cells += 1
-                    if m in acct_months:
-                        row.append(1)
-                        filled_cells += 1
-                    else:
-                        row.append(0)
-                z_data.append(row)
-
-            # Month labels for x-axis (short form)
-            month_labels = [datetime.strptime(m, "%Y-%m").strftime("%b %y") for m in all_months_range]
-
-            completeness_pct = (filled_cells / total_cells * 100) if total_cells > 0 else 0
-
-            st.markdown("#### Coverage Heatmap")
-            st.caption(f"**{completeness_pct:.0f}%** complete ({filled_cells} of {total_cells} account-months)")
-
-            fig_heat = go.Figure(data=go.Heatmap(
-                z=z_data,
-                x=month_labels,
-                y=acct_labels,
-                colorscale=[[0, '#ef4444'], [1, '#22c55e']],
-                showscale=True,
-                colorbar=dict(
-                    title="", tickvals=[0, 1], ticktext=["Missing", "Has Data"],
-                    len=0.5, thickness=12,
-                ),
-                hovertemplate="<b>%{y}</b><br>%{x}<br>%{customdata}<extra></extra>",
-                customdata=[["Has data" if cell == 1 else "Missing" for cell in row] for row in z_data],
-                xgap=3, ygap=4,
-            ))
-            # Show every 3rd month label to reduce crowding
-            tick_interval = max(1, len(month_labels) // 15)
-            fig_heat.update_layout(
-                **CHART_LAYOUT,
-                height=max(180, 55 * len(all_acct_ids)),
-                xaxis=dict(side="top", tickangle=-45, dtick=tick_interval),
-                yaxis=dict(autorange="reversed"),
-            )
-            st.plotly_chart(fig_heat, use_container_width=True)
-
-            # Missing months — actionable items
-            missing_months = database.get_missing_months(conn)
-            if missing_months:
-                with st.expander(f"Missing months ({len(missing_months)})", expanded=len(missing_months) <= 6):
-                    for item in missing_months:
-                        label = config.ACCOUNTS.get(item["account_id"], {}).get("label", item["account_id"])
-                        ym = datetime.strptime(item["year_month"], "%Y-%m").strftime("%B %Y")
-                        st.markdown(f"- Upload **{label}** for **{ym}**")
-        else:
-            st.info("No statements yet. Drop your first PDF or CSV below.")
-    else:
-        st.info("No statements yet. Drop your first PDF or CSV below.")
-
-    st.divider()
-
-    # ── File uploader ─────────────────────────────────────────────────────
-    uploaded_files = st.file_uploader(
-        "Drop PDF or CSV statements",
-        type=["pdf", "csv"],
-        accept_multiple_files=True,
+    if txn_count == 0:
+        st.info("Upload statements to see monthly spending breakdown.")
+        conn.close()
+        st.stop()
+
+    available_months = database.get_available_months(conn)
+    if not available_months:
+        st.info("No transaction data yet.")
+        conn.close()
+        st.stop()
+
+    # Month navigation — selectbox
+    from calendar import month_name as _mn
+    selected_month = st.selectbox(
+        "Month",
+        available_months,
+        index=0,
+        format_func=lambda m: f"{_mn[int(m.split('-')[1])]} {m.split('-')[0]}",
         label_visibility="collapsed",
     )
+    _y, _m = selected_month.split("-")
+    month_display = f"{_mn[int(_m)]} {_y}"
+    st.markdown(f"### {month_display}")
 
-    if uploaded_files:
-        advisor = get_advisor()
-        existing_stmts = database.get_all_statements(conn)
-        existing_periods = [
-            {"account_id": s["account_id"], "period_start": s["period_start"], "period_end": s["period_end"]}
-            for s in existing_stmts
-        ]
+    # Get this month's data
+    _raw_breakdown = database.get_monthly_category_breakdown(conn, selected_month)
+    _active_cats_dash = category_engine.get_active_categories(conn)
+    month_breakdown = [c for c in _raw_breakdown if c["category"] in _active_cats_dash]
+    if not month_breakdown:
+        st.info(f"No spending data for {month_display}.")
+        conn.close()
+        st.stop()
 
-        for uploaded_file in uploaded_files:
-            st.divider()
-            file_bytes = uploaded_file.read()
-            file_hash = pdf_parser.compute_bytes_hash(file_bytes)
-            is_csv = uploaded_file.name.lower().endswith(".csv")
+    # Top-level metrics
+    total_spent = sum(abs(c["total"]) for c in month_breakdown)
+    txn_total = sum(c["txn_count"] for c in month_breakdown)
+    top_cat = month_breakdown[0] if month_breakdown else None
 
-            st.markdown(f"#### {uploaded_file.name}")
+    # ── Savings Goal Tracker ──────────────────────────────────────
+    _sel_year, _sel_month = int(_y), int(_m)
+    _income_data = models.get_income_for_month(_sel_year, _sel_month)
+    _monthly_income = _income_data["total_income"] if isinstance(_income_data, dict) else _income_data
+    savings_target = int(database.get_setting(conn, "monthly_savings_target", "2000"))
 
-            # STEP 1: Detect account + period
-            if is_csv:
-                with st.spinner("Analyzing CSV..."):
-                    detected_account = csv_parser.identify_account_from_csv(file_bytes, uploaded_file.name)
+    # Bonus toggles (default OFF for conservative planning)
+    _bonus_col1, _bonus_col2 = st.columns(2)
+    _kero_bonus_on = _bonus_col1.checkbox("Include Kero bonus ($1,500/mo)", value=False, key="dash_kero_bonus")
+    _maggie_bonus_on = _bonus_col2.checkbox("Include Maggie bonus ($417/mo)", value=False, key="dash_maggie_bonus")
+    _kero_bonus_val = _income_data.get("kero_bonus", 0) if isinstance(_income_data, dict) else 0
+    _maggie_bonus_val = _income_data.get("maggie_bonus", 0) if isinstance(_income_data, dict) else 0
+    if not _kero_bonus_on:
+        _monthly_income -= _kero_bonus_val
+    if not _maggie_bonus_on:
+        _monthly_income -= _maggie_bonus_val
+
+    # Known fixed costs (mortgage, car, loans, church, etc.) — always happen even if not in transaction data
+    _fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
+
+    # Total outflow = fixed costs + discretionary (from transactions)
+    # Avoid double-counting: subtract any fixed-category spending already in transaction data
+    _fixed_cats = {"Housing & Utilities", "Debt Payments", "Giving & Church", "Family Support",
+                   "Transportation", "Childcare & Education", "Phone & Internet",
+                   "Car Insurance"}
+    _txn_fixed = sum(abs(c["total"]) for c in month_breakdown if c["category"] in _fixed_cats)
+    _txn_discretionary = total_spent - _txn_fixed
+
+    # Use the HIGHER of config fixed costs or actual fixed-category transactions
+    _effective_fixed = max(_fixed_costs, _txn_fixed)
+    _total_outflow = _effective_fixed + _txn_discretionary
+
+    _budget_limit = _monthly_income - savings_target  # max you can spend and still save
+    _saved = _monthly_income - _total_outflow
+    _gap = _saved - savings_target
+    _on_track = _saved >= savings_target
+    _spent_pct = min(_total_outflow / _budget_limit * 100, 100) if _budget_limit > 0 else 100
+
+    # Gauge colors
+    _D = "$"
+    if _on_track:
+        _gauge_color = "#22c55e"
+        _status_text = f"ON TRACK — {_D}{_gap:,.0f} above target"
+        _status_icon = "✅"
+    elif _saved > 0:
+        _gauge_color = "#f59e0b"
+        _status_text = f"AT RISK — {_D}{abs(_gap):,.0f} short of target"
+        _status_icon = "⚠️"
+    else:
+        _gauge_color = "#ef4444"
+        _status_text = f"OVER BUDGET — {_D}{abs(_saved):,.0f} in the red"
+        _status_icon = "🔴"
+
+    _D = "$"
+    _gauge_html = (
+        f'<div style="background:#f8f9fb;border:1px solid #e2e6ed;border-radius:14px;padding:16px 20px;margin-bottom:16px;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+        f'<span style="font-weight:700;font-size:1rem;">🎯 {month_display} Savings Goal</span>'
+        f'<span style="font-weight:700;font-size:1.1rem;color:{_gauge_color};">{_status_icon} {_D}{_saved:,.0f} saved</span>'
+        f'</div>'
+        f'<div style="height:12px;border-radius:6px;background:#e5e7eb;overflow:hidden;margin:8px 0;">'
+        f'<div style="height:100%;width:{min(_spent_pct, 100):.0f}%;background:{_gauge_color};border-radius:6px;transition:width 0.3s;"></div>'
+        f'</div>'
+        f'<div style="display:flex;justify-content:space-between;font-size:0.82rem;color:#6b7280;margin-top:4px;">'
+        f'<span>{_D}{_total_outflow:,.0f} est. total (fixed + tracked) of {_D}{_budget_limit:,.0f} budget</span>'
+        f'<span>Target: {_D}{savings_target:,}/mo</span>'
+        f'</div>'
+        f'<div style="font-size:0.78rem;color:#9ca3af;margin-top:2px;">Fixed bills: {_D}{_effective_fixed:,.0f} · Discretionary: {_D}{_txn_discretionary:,.0f}</div>'
+        f'<div style="font-size:0.85rem;color:{_gauge_color};font-weight:600;margin-top:6px;">{_status_text}</div>'
+        f'</div>'
+    )
+    st.markdown(_gauge_html, unsafe_allow_html=True)
+
+    # ── Daily Budget + Gap Closer ─────────────────────────────────
+    _disc_budget = _monthly_income - _effective_fixed - savings_target
+    _discretionary_left = max(_disc_budget - _txn_discretionary, 0)
+    _over_budget = max(_txn_discretionary - _disc_budget, 0)
+
+    from calendar import monthrange as _monthrange
+    _days_in_month = _monthrange(_sel_year, _sel_month)[1]
+    _days_left = max(_days_in_month - min(date.today().day, _days_in_month), 1) if (date.today().year, date.today().month) == (_sel_year, _sel_month) else 0
+
+    _D = "$"
+    if _days_left > 0:
+        _daily_left = _discretionary_left / _days_left
+        if _discretionary_left > 0:
+            _pace_html = f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin-bottom:12px;"><span style="font-size:1.1rem;font-weight:700;color:#22c55e;">💰 {_D}{_daily_left:,.0f}/day</span> <span style="color:#6b7280;">for the next {_days_left} days to hit your {_D}{savings_target:,} target</span></div>'
+        else:
+            _pace_html = f'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;margin-bottom:12px;"><span style="font-size:1.1rem;font-weight:700;color:#ef4444;">🛑 FREEZE spending</span> <span style="color:#6b7280;">for {_days_left} days — you\'re {_D}{_over_budget:,.0f} over your discretionary budget</span></div>'
+        st.markdown(_pace_html, unsafe_allow_html=True)
+
+    # Gap Closer — Claude-written actions (only if over budget)
+    if _over_budget > 0:
+        _gap_cache_key = f"gap_closer_{selected_month}_{_over_budget:.0f}"
+        if _gap_cache_key not in st.session_state:
+            st.session_state[_gap_cache_key] = None
+
+        if st.session_state[_gap_cache_key] is None:
+            advisor = get_advisor()
+            if advisor:
+                with st.spinner("Analyzing your spending to find savings..."):
                     try:
-                        quick_result = csv_parser.parse_chase_csv(file_bytes, account_hint=detected_account)
-                        period_start = quick_result.get("period_start")
-                        period_end = quick_result.get("period_end")
-                    except Exception as e:
-                        st.error(f"CSV parsing failed: {e}")
-                        continue
-                detection_reasons = ["Transaction pattern analysis" if detected_account else ""]
-                page_count = None
-                is_checking = detected_account == "joint_checking"
-            else:
-                with st.spinner("Scanning PDF..."):
-                    analysis = pdf_parser.analyze_upload(file_bytes, uploaded_file.name)
-                    detected_account = analysis["detected_account"]
-                    period_start = analysis["period_start"]
-                    period_end = analysis["period_end"]
-                    detection_reasons = analysis["detection_reasons"]
-                    page_count = analysis["page_count"]
-                    is_checking = analysis["is_checking"]
+                        _gap_txns = conn.execute(
+                            """SELECT date, description, amount, category FROM transactions
+                               WHERE strftime('%Y-%m', date) = ? AND amount < 0 ORDER BY amount ASC""",
+                            (selected_month,),
+                        ).fetchall()
+                        _gap_txn_text = "\n".join(f"{t['date']} | {t['description']} | {_D}{t['amount']:,.2f} | {t['category']}" for t in _gap_txns)
+                        _gap_cat_summary = "\n".join(f"  {c['category']}: {_D}{abs(c['total']):,.2f} ({c['txn_count']} txns)" for c in month_breakdown)
 
-            # Account confirmation
-            acct_label = config.ACCOUNTS.get(detected_account, {}).get("label", "Unknown")
-            account_options = list(config.ACCOUNTS.keys())
-            default_idx = account_options.index(detected_account) if detected_account in account_options else 0
-            account_id = st.selectbox(
-                "Confirm account:",
-                account_options,
-                index=default_idx,
-                format_func=lambda x: f"{config.ACCOUNTS[x]['label']} ({config.ACCOUNTS[x]['owner']})",
-                key=f"acct_{uploaded_file.name}",
-            )
+                        _gap_result = advisor.generate_gap_closer(
+                            gap=_over_budget,
+                            discretionary_spent=_txn_discretionary,
+                            discretionary_budget=_disc_budget,
+                            days_left=_days_left,
+                            savings_target=savings_target,
+                            transactions_text=_gap_txn_text,
+                            category_summary=_gap_cat_summary,
+                        )
+                        st.session_state[_gap_cache_key] = _gap_result
+                    except Exception as _e:
+                        st.session_state[_gap_cache_key] = {"error": str(_e)}
 
-            # STEP 2: Overlap check
-            if period_start and period_end:
-                upload_status = database.classify_upload(conn, account_id, period_start, period_end, file_hash)
-            else:
-                upload_status = {"status": "new", "message": "Period unknown — importing all.", "action": "import", "new_transactions_likely": True}
+        _gap_data = st.session_state.get(_gap_cache_key)
+        if _gap_data and "actions" in _gap_data:
+            st.markdown(f"#### 🔴 Close Your {_D}{_over_budget:,.0f} Gap — Do These 3 Things")
+            _cumulative_recovery = 0
+            for _act in _gap_data.get("actions", [])[:3]:
+                _recovery = _act.get("recovery", 0)
+                _cumulative_recovery += _recovery
+                _gap_remaining = max(_over_budget - _cumulative_recovery, 0)
+                _pct_closed = min(_cumulative_recovery / _over_budget * 100, 100) if _over_budget > 0 else 0
 
-            status_colors = {"new": "success", "extends": "info", "duplicate_file": "error", "duplicate_period": "warning", "overlapping": "warning"}
-            getattr(st, status_colors.get(upload_status["status"], "info"))(upload_status["message"])
-
-            # Warn if statement is old (> 12 months)
-            _old_statement = False
-            if period_start and period_start != "unknown":
-                try:
-                    _ps = date.fromisoformat(period_start)
-                    _age_days = (date.today() - _ps).days
-                    if _age_days > 365:
-                        st.warning(f"This statement is from **{period_start}** ({_age_days // 30} months ago). "
-                                   f"Old data may reduce forecast accuracy. Transactions older than 18 months will be skipped.")
-                        _old_statement = True
-                except (ValueError, TypeError):
-                    pass
-
-            if upload_status["action"] == "skip":
-                continue
-
-            should_proceed = True
-            if upload_status["action"] == "ask_user":
-                should_proceed = st.checkbox("Import anyway? (duplicates auto-skipped)", key=f"force_{uploaded_file.name}")
-            if not should_proceed:
-                continue
-
-            # STEP 3: Extract transactions
-            if is_csv:
-                result = quick_result
-                result["account_id"] = account_id
-            else:
-                # Check if this is a Chase Spending Report (instant parsing, no Claude needed)
-                is_spending_report = chase_report_parser.is_spending_report(analysis["raw_text"])
-
-                if is_spending_report:
-                    with st.spinner("Parsing Chase Spending Report (instant)..."):
-                        try:
-                            result = chase_report_parser.parse_spending_report(
-                                file_bytes, uploaded_file.name, raw_text=analysis["raw_text"]
-                            )
-                            result["account_id"] = account_id
-                        except Exception as e:
-                            st.error(f"Spending report parsing failed: {e}")
-                            continue
-                elif is_checking:
-                    # Chase Checking Statement — direct regex parsing (instant, no Claude)
-                    with st.spinner("Parsing Chase Checking Statement (instant)..."):
-                        try:
-                            result = chase_report_parser.parse_checking_statement(
-                                file_bytes, uploaded_file.name,
-                                raw_text=analysis["raw_text"],
-                                period_start=period_start or "",
-                                period_end=period_end or "",
-                            )
-                            result["account_id"] = account_id
-                        except Exception as e:
-                            st.error(f"Checking statement parsing failed: {e}")
-                            continue
-                else:
-                    # Regular PDF statement — needs Claude
-                    if not advisor:
-                        st.error("Set your Anthropic API key in Settings to process PDFs.")
-                        continue
-                    with st.spinner("Claude is extracting transactions..."):
-                        try:
-                            result = advisor.extract_transactions(
-                                raw_text=analysis["raw_text"], tables=analysis["tables"],
-                                account_hint=account_id, existing_periods=existing_periods,
-                                is_checking=is_checking,
-                                categories=category_engine.get_active_categories(conn),
-                            )
-                        except Exception as e:
-                            st.error(f"Extraction failed: {e}")
-                            continue
-
-                if not period_start:
-                    period_start = result.get("period_start", "")
-                if not period_end:
-                    period_end = result.get("period_end", "")
-
-            # STEP 4: Auto-import transactions
-            transactions = result.get("transactions", [])
-            if not transactions:
-                st.warning("No transactions found.")
-                continue
-
-            # Normalize all dates to YYYY-MM-DD before saving
-            year_hint = (period_start or "")[:4] if period_start and period_start != "unknown" else ""
-            transactions = normalize_transactions(transactions, year_hint)
-            period_start = normalize_date(period_start or "unknown", year_hint)
-            period_end = normalize_date(period_end or "unknown", year_hint)
-
-            # Date validation: reject transactions with invalid/missing dates
-            import re as _re
-            valid_txns = []
-            bad_dates = 0
-            for txn in transactions:
-                d = txn.get("date", "")
-                if d and d != "unknown" and _re.match(r'^\d{4}-\d{2}-\d{2}$', d):
-                    valid_txns.append(txn)
-                else:
-                    bad_dates += 1
-            if bad_dates > 0:
-                st.warning(f"Skipped {bad_dates} transactions with invalid dates.")
-            transactions = valid_txns
-
-            # Auto-import (skip if already imported on a previous rerun)
-            if database.check_duplicate_statement(conn, file_hash):
-                st.info(f"Already imported: **{uploaded_file.name}** ({len(transactions)} transactions)")
-                continue
-
-            stmt_id = database.insert_statement(
-                conn, uploaded_file.name, account_id,
-                period_start, period_end, file_hash,
-                notes=f"Status: {upload_status['status']}",
-            )
-            for txn in transactions:
-                txn["account_id"] = account_id
-                txn["statement_id"] = stmt_id
-
-            inserted = database.bulk_insert_transactions(conn, transactions)
-            database.update_statement_txn_count(conn, stmt_id, inserted)
-            skipped = len(transactions) - inserted
-
-            # Invalidate analytics cache after successful import
-            analytics_cache.invalidate(conn)
-            st.session_state['analytics_stale'] = True
-
-            # Auto-fix: if period is still unknown, derive from actual transaction dates
-            if not period_start or period_start == "unknown" or not period_end or period_end == "unknown":
-                date_row = conn.execute(
-                    "SELECT MIN(date) as d1, MAX(date) as d2 FROM transactions WHERE statement_id = ?",
-                    (stmt_id,),
-                ).fetchone()
-                if date_row and date_row["d1"] and date_row["d1"] != "unknown":
-                    conn.execute(
-                        "UPDATE statements SET period_start = ?, period_end = ? WHERE id = ?",
-                        (date_row["d1"], date_row["d2"], stmt_id),
-                    )
-                    conn.commit()
-
-            # ── Clean upload summary ──────────────────────────────────────
-            charges = sum(t["amount"] for t in transactions if t["amount"] < 0)
-            credits_total = sum(t["amount"] for t in transactions if t["amount"] > 0)
-            final_label = config.ACCOUNTS.get(account_id, {}).get("label", account_id)
-            period_display = f"{period_start} to {period_end}" if period_start and period_end else "Unknown period"
-            dup_note = f" (skipped {skipped} duplicates)" if skipped > 0 else ""
-
-            with st.container():
-                st.success(
-                    f"**{final_label}** | {period_display} | "
-                    f"**{inserted}** transactions imported{dup_note} | "
-                    f"Charges: \\${abs(charges):,.2f}"
+                _act_html = (
+                    f'<div style="background:white;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:8px;">'
+                    f'<div style="font-weight:700;color:#1a1a2e;">{_act.get("rank", "")}. {_act.get("category", "")} — {_act.get("merchant", "")}</div>'
+                    f'<div style="color:#4b5563;margin:6px 0;">{_act.get("action", "")}</div>'
+                    f'<div style="display:flex;align-items:center;gap:10px;">'
+                    f'<div style="flex:1;height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden;">'
+                    f'<div style="height:100%;width:{_pct_closed:.0f}%;background:#22c55e;border-radius:4px;"></div></div>'
+                    f'<span style="font-size:0.85rem;color:#6b7280;">Gap: {_D}{_gap_remaining:,.0f}</span>'
+                    f'</div></div>'
                 )
-                if result.get("analysis_notes"):
-                    st.caption(result["analysis_notes"])
+                st.markdown(_act_html, unsafe_allow_html=True)
 
-                # Category breakdown (collapsed)
-                from collections import Counter
-                cat_counts = Counter(t["category"] for t in transactions if t["amount"] < 0)
-                cat_totals = {}
-                for t in transactions:
-                    if t["amount"] < 0:
-                        cat_totals[t["category"]] = cat_totals.get(t["category"], 0) + abs(t["amount"])
-                with st.expander(f"Category breakdown ({len(cat_counts)} categories)"):
-                    for cat, total in sorted(cat_totals.items(), key=lambda x: -x[1]):
-                        st.write(f"**{cat}**: \\${total:,.2f} ({cat_counts[cat]} txns)")
+            _total_rec = _gap_data.get("total_recovery", _cumulative_recovery)
+            _msg = _gap_data.get("message", "")
+            if _msg:
+                _summary_color = "#22c55e" if _total_rec >= _over_budget else "#f59e0b"
+                st.markdown(f'<div style="background:#f8f9fb;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:{_summary_color};font-weight:600;">✅ {_msg}</div>', unsafe_allow_html=True)
+
+    # Detailed financial breakdown
+    _kero_net = _income_data.get("kero_net", 0) if isinstance(_income_data, dict) else 0
+    _maggie_net = _income_data.get("maggie_net", 0) if isinstance(_income_data, dict) else 0
+    if _kero_bonus_on:
+        _kero_net += _kero_bonus_val
+    if _maggie_bonus_on:
+        _maggie_net += _maggie_bonus_val
+
+    with st.expander("Monthly Budget Breakdown", expanded=False):
+
+        _left, _right = st.columns(2)
+        with _left:
+            st.markdown("**💵 Money In**")
+            _D = "$"
+            _in_html = (
+                f'<table style="width:100%;font-size:0.9rem;border-collapse:collapse;">'
+                f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:4px 0;">Kero (Premera)</td><td style="text-align:right;font-weight:600;">{_D}{_kero_net:,.0f}</td></tr>'
+                f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:4px 0;">Maggie (Boeing)</td><td style="text-align:right;font-weight:600;">{_D}{_maggie_net:,.0f}</td></tr>'
+                f'<tr style="border-bottom:2px solid #1a1a2e;"><td style="padding:6px 0;font-weight:700;">Total Income</td><td style="text-align:right;font-weight:700;font-size:1rem;">{_D}{_monthly_income:,.0f}</td></tr>'
+                f'</table>'
+            )
+            st.markdown(_in_html, unsafe_allow_html=True)
+
+            st.markdown("")
+            st.markdown("**🏠 Fixed Monthly Bills**")
+            _fixed_groups = {
+                "Mortgage": config.FIXED_MONTHLY_EXPENSES.get("Mortgage (Mr. Cooper 6.49%)", 0),
+                "Car (loan + insurance)": config.FIXED_MONTHLY_EXPENSES.get("Auto Loan (Chase #2102)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Car Insurance (CCS Country)", 0),
+                "Student Loans": config.FIXED_MONTHLY_EXPENSES.get("Student Loan 1", 0) + config.FIXED_MONTHLY_EXPENSES.get("Student Loan 2", 0),
+                "Church & Family": config.FIXED_MONTHLY_EXPENSES.get("Church (Zelle)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Family Support (Nermeen)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Church (CC small donations)", 0),
+                "Utilities & Internet": config.FIXED_MONTHLY_EXPENSES.get("PSE Electric & Gas", 0) + config.FIXED_MONTHLY_EXPENSES.get("Water/Sewer (NUD)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Internet (Comcast/Xfinity)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Garbage & Recycling", 0),
+                "Phone (T-Mobile + Mint)": config.FIXED_MONTHLY_EXPENSES.get("T-Mobile", 0) + config.FIXED_MONTHLY_EXPENSES.get("Mint Mobile (normalized)", 0),
+                "Other fixed": config.FIXED_MONTHLY_EXPENSES.get("Gas (fuel)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Auto Maintenance (normalized)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Renters Insurance (AGI)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Digital Subscriptions", 0) + config.FIXED_MONTHLY_EXPENSES.get("Affirm", 0) + config.FIXED_MONTHLY_EXPENSES.get("CC Interest (card 3072)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Home Improvement (normalized)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Travel (normalized)", 0),
+            }
+            _bills_html = '<table style="width:100%;font-size:0.85rem;border-collapse:collapse;">'
+            for label, amt in _fixed_groups.items():
+                _bills_html += f'<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:3px 0;color:#6b7280;">{label}</td><td style="text-align:right;">{_D}{amt:,.0f}</td></tr>'
+            _bills_html += f'<tr style="border-top:2px solid #1a1a2e;"><td style="padding:5px 0;font-weight:700;">Total Fixed</td><td style="text-align:right;font-weight:700;">{_D}{_effective_fixed:,.0f}</td></tr>'
+            _bills_html += '</table>'
+            st.markdown(_bills_html, unsafe_allow_html=True)
+
+        with _right:
+            st.markdown("**🧮 The Math**")
+            _disc_budget = _monthly_income - _effective_fixed - savings_target
+            _math_html = (
+                f'<table style="width:100%;font-size:0.9rem;border-collapse:collapse;">'
+                f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 0;">Income</td><td style="text-align:right;font-weight:600;">{_D}{_monthly_income:,.0f}</td></tr>'
+                f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 0;">− Fixed bills</td><td style="text-align:right;color:#ef4444;">−{_D}{_effective_fixed:,.0f}</td></tr>'
+                f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 0;">− Savings target</td><td style="text-align:right;color:#7c3aed;">−{_D}{savings_target:,.0f}</td></tr>'
+                f'<tr style="border-bottom:2px solid #1a1a2e;background:#f0fdf4;"><td style="padding:6px 0;font-weight:700;">= Discretionary budget</td><td style="text-align:right;font-weight:700;font-size:1.05rem;">{_D}{_disc_budget:,.0f}</td></tr>'
+                f'<tr style="border-bottom:1px solid #e5e7eb;"><td style="padding:5px 0;">− Spent this month</td><td style="text-align:right;color:#ef4444;">−{_D}{_txn_discretionary:,.0f}</td></tr>'
+                f'<tr style="background:{"#f0fdf4" if _discretionary_left > 0 else "#fef2f2"};"><td style="padding:6px 0;font-weight:700;">= Still available</td>'
+                f'<td style="text-align:right;font-weight:700;font-size:1.1rem;color:{"#22c55e" if _discretionary_left > 0 else "#ef4444"};">{_D}{_discretionary_left:,.0f}</td></tr>'
+                f'</table>'
+            )
+            st.markdown(_math_html, unsafe_allow_html=True)
+
+            st.markdown("")
+            st.markdown("**📊 Summary**")
+            _s1, _s2, _s3 = st.columns(3)
+            _s1.metric("Saved", f"${_saved:,.0f}")
+            _s2.metric("Target", f"${savings_target:,}")
+            _s3.metric("Gap", f"${_gap:+,.0f}", delta_color="normal" if _gap >= 0 else "inverse")
+
+    # ── Cache integration ──────────────────────────────────────────────
+    # Check cache staleness and offer refresh
+    _cache_stale = analytics_cache.is_stale(conn)
+    if _cache_stale:
+        st.warning(
+            "Analytics cache is stale (last refreshed: "
+            f"{analytics_cache.get_last_refresh_display(conn)}). "
+            "Hit **Refresh Analytics** below to update trend data."
+        )
+    if st.button("Refresh Analytics", type="secondary" if not _cache_stale else "primary"):
+        with st.spinner("Refreshing analytics cache (trends, forecasts, merchants)..."):
+            analytics_cache.refresh_all(conn)
+        st.rerun()
+
+    # Read all cached trend data (instant reads from DB)
+    cats = [c["category"] for c in month_breakdown]
+    vals = [abs(c["total"]) for c in month_breakdown]
+
+    _default_trend_dict = {
+        "category": "", "direction": "stable", "slope_per_month": 0,
+        "r_squared": 0, "current": 0, "mean": 0, "std": 0,
+        "pct_vs_mean": 0, "months_analyzed": 0, "forecast_next": 0,
+        "severity": "normal", "action": "",
+    }
+
+    trend_results = {}
+    for cat in cats:
+        cached_t = analytics_cache.get_cached_trend(conn, cat)
+        if cached_t:
+            trend_results[cat] = cached_t
+        else:
+            trend_results[cat] = {**_default_trend_dict, "category": cat}
+
+    severity_map = {
+        "critical": {"icon": "🔴", "color": PALETTE["red"], "label": "Needs Action"},
+        "warning": {"icon": "🟠", "color": PALETTE["amber"], "label": "Watch"},
+        "watch": {"icon": "🟡", "color": PALETTE["amber"], "label": "Monitor"},
+        "normal": {"icon": "🟢", "color": PALETTE["green"], "label": "On Track"},
+    }
+
+    direction_icons = {"rising": "↑", "falling": "↓", "stable": "→"}
+
+    # ── Bar chart: color by severity ────────────────────────────────────
+    bar_colors = [
+        severity_map.get(trend_results.get(c, _default_trend_dict).get("severity", "normal"),
+                         severity_map["normal"])["color"]
+        for c in cats
+    ]
+
+    fig = go.Figure(go.Bar(
+        x=vals, y=cats, orientation="h",
+        marker_color=bar_colors, marker_line_width=0,
+        text=[f"${v:,.0f}" for v in vals],
+        textposition="auto", textfont_size=11,
+        hovertemplate="<b>%{y}</b><br>$%{x:,.0f}<extra></extra>",
+    ))
+    fig.update_layout(**CHART_LAYOUT, height=max(350, len(cats) * 38 + 80),
+                     showlegend=False, yaxis=dict(autorange="reversed"),
+                     xaxis=dict(title="Amount ($)", gridcolor="#f3f4f6", tickformat="$,.0f"))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    st.caption("Bar color: 🔴 needs action | 🟠 watch | 🟢 on track (based on statistical trend analysis)")
+
+    # ── Unified Chat About Your Finances ──────────────────────────────
+    if "dashboard_chat_history" not in st.session_state:
+        st.session_state.dashboard_chat_history = []
+    if "dashboard_chat_month" not in st.session_state:
+        st.session_state.dashboard_chat_month = ""
+    if st.session_state.dashboard_chat_month != selected_month:
+        st.session_state.dashboard_chat_history = []
+        st.session_state.dashboard_chat_month = selected_month
+
+    with st.expander(f"💬 Chat About Your Finances", expanded=len(st.session_state.dashboard_chat_history) > 0):
+        for msg in st.session_state.dashboard_chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(escape_dollars(msg["content"]))
+
+        dash_question = st.chat_input(
+            "Ask about spending or savings...",
+            key="dashboard_chat_input",
+        )
+        if dash_question:
+            with st.chat_message("user"):
+                st.markdown(escape_dollars(dash_question))
+            st.session_state.dashboard_chat_history.append({"role": "user", "content": dash_question})
+
+            # Build comprehensive unified context
+            _all_txns = conn.execute(
+                """SELECT date, description, amount, category FROM transactions
+                   WHERE strftime('%Y-%m', date) = ? ORDER BY category, date""",
+                (selected_month,),
+            ).fetchall()
+            _txn_lines = [f"{t['date']} | {t['description']} | ${t['amount']:,.2f} | {t['category']}" for t in _all_txns]
+            _txn_context = "\n".join(_txn_lines)
+            _cat_summary = "\n".join(f"  {c['category']}: ${abs(c['total']):,.2f} ({c['txn_count']} txns)" for c in month_breakdown)
+
+            # Include forecast data
+            _forecast_lines = ""
+            for _cat in [c["category"] for c in month_breakdown[:8]]:
+                _pf = analytics_cache.get_cached_prophet(conn, _cat)
+                if _pf and _pf.get("forecast"):
+                    _next = _pf["forecast"][0]
+                    _forecast_lines += f"  {_cat}: ${_next['predicted']:,.0f} predicted next month\n"
+
+            _unified_context = (
+                f"DASHBOARD DATA for {month_display}:\n"
+                f"- Income (no bonus): ${_monthly_income:,.0f}\n"
+                f"- Fixed bills: ${_effective_fixed:,.0f}\n"
+                f"- Savings target: ${savings_target:,}/mo\n"
+                f"- Discretionary budget: ${_disc_budget:,.0f}\n"
+                f"- Discretionary spent: ${_txn_discretionary:,.0f}\n"
+                f"- Over budget by: ${_over_budget:,.0f}\n"
+                f"- Days left in month: {_days_left}\n"
+                f"- Saved so far: ${_saved:,.0f}\n"
+                f"- Gap to target: ${_gap:+,.0f}\n"
+                f"- Total tracked: ${total_spent:,.0f} ({sum(c['txn_count'] for c in month_breakdown)} txns)\n\n"
+                f"CATEGORY BREAKDOWN:\n{_cat_summary}\n\n"
+                f"FORECASTS FOR NEXT MONTH:\n{_forecast_lines}\n"
+                f"ALL TRANSACTIONS:\n{_txn_context}\n\n"
+                f"You can explain any number shown on the dashboard, break down any category, "
+                f"explain any transaction, interpret any forecast, or give savings advice. "
+                f"Be realistic. Items already purchased may not be returnable. "
+                f"Focus on: reducing remaining spending this month, planning next month's budget, "
+                f"identifying habits to change, and using forecast data to prevent future overages."
+            )
+
+            advisor = get_advisor()
+            if advisor:
+                with st.chat_message("assistant"):
+                    with st.spinner("Analyzing..."):
+                        try:
+                            result = advisor.get_advisor_response(
+                                user_message=f"{_unified_context}\n\nUser question: {dash_question}",
+                                conversation_history=st.session_state.dashboard_chat_history[:-1],
+                                financial_context={"month": selected_month, "month_display": month_display, "total_spent": total_spent, "savings_target": savings_target, "gap": _over_budget},
+                                tactical_context={},
+                            )
+                            response = result.get("response", str(result))
+                            st.markdown(escape_dollars(response))
+                            st.session_state.dashboard_chat_history.append({"role": "assistant", "content": response})
+                        except Exception as e:
+                            st.error(f"Could not get a response: {e}")
+                            st.session_state.dashboard_chat_history.append({"role": "assistant", "content": str(e)})
+            else:
+                with st.chat_message("assistant"):
+                    st.warning("Set your Anthropic API key in Settings to use the chat.")
+
+    # ── Category Cards from Cache ─────────────────────────────────────
+    st.divider()
+
+    # Claude preventive actions — reads from cache instead of computing inline
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _get_claude_preventive_actions(_month_key: str):
+        """Cache Claude's preventive actions for 5 minutes to avoid repeated API calls."""
+        advisor = get_advisor()
+        if not advisor:
+            return {}
+        _conn = get_conn()
+        cats_payload = []
+        _mb = database.get_monthly_category_breakdown(_conn, _month_key)
+        for cd in _mb:
+            c = cd["category"]
+            _actual_spend = abs(cd.get("total", 0))
+            if _actual_spend == 0:
+                continue
+            t = analytics_cache.get_cached_trend(_conn, c) or _default_trend_dict
+            _avg = float(t.get("mean", 0))
+            _pct = ((_actual_spend / _avg) - 1) * 100 if _avg > 0 else 0
+            entry = {
+                "category": c,
+                "current_spend": _actual_spend,  # Use selected month's actual spend
+                "historical_avg": _avg,
+                "historical_std": float(t.get("std", 0)),
+                "trend_direction": t.get("direction", "stable"),
+                "slope_per_month": float(t.get("slope_per_month", 0)),
+                "pct_vs_mean": _pct,  # Recomputed from actual spend
+                "severity": "critical" if _pct > 115 else ("warning" if _pct > 100 else t.get("severity", "normal")),
+                "merchants": [],
+            }
+            # Current month merchants (from DB, not stale cache)
+            _cur_merchants = database.get_merchant_breakdown_for_month(_conn, c, _month_key, limit=5)
+            if _cur_merchants:
+                entry["merchants"] = [m["name"] for m in _cur_merchants]
+                entry["merchant_details"] = [
+                    {"name": m["name"], "total": abs(m["total"]), "visits": m["visits"],
+                     "avg_per_visit": round(abs(m["total"]) / max(m["visits"], 1), 2)}
+                    for m in _cur_merchants
+                ]
+            # Cached Prophet forecast
+            cached_pf = analytics_cache.get_cached_prophet(_conn, c)
+            if cached_pf and cached_pf.get("forecast"):
+                entry["prophet_forecast"] = cached_pf["forecast"]
+                entry["prophet_trend"] = cached_pf.get("trend_direction", "")
+                entry["prophet_slope"] = cached_pf.get("trend_slope_monthly", 0)
+            # Cached advanced analytics
+            cached_adv = analytics_cache.get_cached_advanced(_conn, c)
+            if cached_adv:
+                mk = cached_adv.get("mann_kendall", {})
+                entry["mann_kendall_trend"] = mk.get("trend", "")
+                entry["mann_kendall_strength"] = mk.get("strength", "")
+                entry["mann_kendall_p"] = mk.get("p_value", 1.0)
+                seas = cached_adv.get("seasonality", {})
+                entry["seasonal"] = seas.get("has_seasonality", False)
+                entry["seasonal_strength"] = seas.get("seasonal_strength", 0)
+                entry["seasonal_period"] = seas.get("period", 0)
+            cats_payload.append(entry)
+        _conn.close()
+
+        try:
+            actions = advisor.generate_preventive_actions(cats_payload)
+            return {a["category"]: a for a in actions if isinstance(a, dict) and "category" in a}
+        except Exception:
+            return {}
+
+    # Only call Claude if we have an API key
+    claude_actions = {}
+    advisor = get_advisor()
+    if advisor:
+        with st.spinner("Analyzing trends & generating preventive actions..."):
+            claude_actions = _get_claude_preventive_actions(selected_month)
+
+    # Helper: build a category card reading from cache
+    def _render_category_card(cat_data, trend_d, severity_info, expanded_default=False):
+        """Render a single category card. `trend_d` is a dict from cache."""
+        cat = cat_data["category"]
+        spent = abs(cat_data["total"])
+        count = cat_data["txn_count"]
+        sev = severity_info
+        t_direction = trend_d.get("direction", "stable")
+        t_current = spent  # Use SELECTED month's actual spend, not cached latest
+        t_mean = float(trend_d.get("mean", 0))
+        t_std = float(trend_d.get("std", 0))
+        t_slope = float(trend_d.get("slope_per_month", 0))
+        t_pct = ((t_current / t_mean) - 1) * 100 if t_mean > 0 else 0  # Recompute from actual spend
+        t_action = trend_d.get("action", "")
+
+        direction_icon = direction_icons.get(t_direction, "→")
+        pct_str = f"+{t_pct:.0f}%" if t_pct > 0 else f"{t_pct:.0f}%"
+
+        # Card class, icon, and bar — ALL use the same color logic
+        fill_pct = min(120, spent / t_mean * 100) if t_mean > 0 else 50
+        if fill_pct > 115:
+            card_class = "cat-card-critical"
+            sev = severity_map["critical"]
+            bar_color = PALETTE["red"]
+        elif fill_pct > 100:
+            card_class = "cat-card-warning"
+            sev = severity_map["warning"]
+            bar_color = PALETTE["amber"]
+        elif fill_pct < 75:
+            card_class = "cat-card-good"
+            sev = {"icon": "🟢", "color": PALETTE["green"], "label": "On Track"}
+            bar_color = PALETTE["green"]
+        else:
+            card_class = "cat-card-good"
+            sev = {"icon": "🟢", "color": PALETTE["green"], "label": "On Track"}
+            bar_color = PALETTE["green"]
+
+        # Prophet forecast inline — from cache
+        prophet_line = ""
+        cached_pf = analytics_cache.get_cached_prophet(conn, cat)
+        if cached_pf and cached_pf.get("forecast"):
+            next_mo = cached_pf["forecast"][0]
+            fc_icon = "↑" if next_mo["predicted"] > t_current else "↓"
+            prophet_line = f'<div style="font-size:0.78rem; color:#7c3aed; margin-top:3px;">🔮 Forecast: <b>${next_mo["predicted"]:,.0f}</b> next month {fc_icon}</div>'
+
+        _card_html = (
+            f'<div class="cat-card {card_class}">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
+            f'<span style="font-weight:700;font-size:1rem;">{sev["icon"]} {cat}</span>'
+            f'<span style="font-weight:700;font-size:1.1rem;color:{sev["color"]};">${spent:,.0f}</span>'
+            f'</div>'
+            f'<div class="budget-bar"><div class="budget-fill" style="width:{min(fill_pct, 100):.0f}%;background:{bar_color};"></div></div>'
+            f'<div style="display:flex;justify-content:space-between;font-size:0.8rem;color:#6b7280;margin-top:2px;">'
+            f'<span>{direction_icon} {pct_str} vs avg (${t_mean:,.0f})</span>'
+            f'<span>{count} transactions</span>'
+            f'</div>'
+            f'{prophet_line}'
+            f'</div>'
+        )
+        st.markdown(_card_html, unsafe_allow_html=True)
+
+        # Expandable: history chart + Prophet forecast + merchants + advanced + action
+        with st.expander("Trend, Forecast & Action Plan", expanded=expanded_default):
+            history = database.get_category_monthly_history(conn, cat, months=12)
+
+            if len(history) >= 2:
+                hist_df = pd.DataFrame(list(reversed(history)))
+                hist_df["total"] = hist_df["total"].abs()
+
+                fig = go.Figure()
+
+                # Historical spending line
+                fig.add_trace(go.Scatter(
+                    x=hist_df["month"], y=hist_df["total"], mode="lines+markers",
+                    name="Actual", line=dict(color=sev["color"], width=2.5),
+                    marker=dict(size=7, color=sev["color"]),
+                    hovertemplate="<b>%{x}</b><br>Actual: $%{y:,.0f}<extra></extra>",
+                ))
+
+                # Prophet forecast overlay from cache — connected to last actual
+                if cached_pf and cached_pf.get("forecast"):
+                    last_actual_month = hist_df["month"].iloc[-1]
+                    last_actual_val = hist_df["total"].iloc[-1]
+
+                    fc_months = [last_actual_month] + [f["month"] for f in cached_pf["forecast"]]
+                    fc_vals = [last_actual_val] + [f["predicted"] for f in cached_pf["forecast"]]
+                    fc_lower = [last_actual_val] + [f["lower"] for f in cached_pf["forecast"]]
+                    fc_upper = [last_actual_val] + [f["upper"] for f in cached_pf["forecast"]]
+
+                    # Confidence band (connected from last actual)
+                    fig.add_trace(go.Scatter(
+                        x=fc_months + fc_months[::-1],
+                        y=fc_upper + fc_lower[::-1],
+                        fill="toself", fillcolor="rgba(139,92,246,0.12)",
+                        line=dict(width=0), showlegend=True, name="80% CI",
+                        hoverinfo="skip",
+                    ))
+                    # Forecast line (connected from last actual)
+                    fig.add_trace(go.Scatter(
+                        x=fc_months, y=fc_vals, mode="lines+markers",
+                        name="Prophet Forecast",
+                        line=dict(color=PALETTE["purple"], width=2, dash="dash"),
+                        marker=dict(size=7, symbol="diamond", color=PALETTE["purple"]),
+                        hovertemplate="<b>%{x}</b><br>Forecast: $%{y:,.0f}<extra></extra>",
+                    ))
+
+                # Average line
+                avg = hist_df["total"].mean()
+                fig.add_hline(y=avg, line_dash="dot", line_color=PALETTE["gray"],
+                             annotation_text=f"avg ${avg:,.0f}", annotation_font_size=9)
+
+                compact_layout = {**CHART_LAYOUT, "margin": dict(t=15, b=25, l=50, r=15)}
+                fig.update_layout(**compact_layout, height=220,
+                                 legend=dict(orientation="h", yanchor="bottom", y=1.02, font_size=9),
+                                 xaxis=dict(showgrid=False),
+                                 yaxis=dict(gridcolor="#f3f4f6", tickformat="$,.0f"))
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+            # Stats + merchants + advanced analytics + action in columns
+            col_info, col_action = st.columns([1, 1])
+
+            with col_info:
+                st.markdown(f"**Trend:** {t_direction.title()} at \\${abs(t_slope):,.0f}/mo")
+                st.markdown(f"**This month:** \\${t_current:,.0f} | **Avg:** \\${t_mean:,.0f} ± \\${t_std:,.0f}")
+
+                # Merchant impact — current month spend per merchant (from DB)
+                _month_merchants = database.get_merchant_breakdown_for_month(conn, cat, selected_month, limit=6)
+                if _month_merchants:
+                    import re as _re
+                    m_entries = []
+                    for _fbm in _month_merchants:
+                        name = _fbm["name"] or ""
+                        name = _re.sub(r'[A-Z0-9]{8,}', '', name).strip()
+                        name = _re.sub(r'\s+', ' ', name).strip().rstrip(',').strip()
+                        if name and len(name) > 2:
+                            name = name.title() if name.isupper() else name
+                            m_entries.append((name[:25], abs(_fbm["total"])))
+                    if m_entries:
+                        m_names = [e[0] for e in m_entries]
+                        m_vals = [e[1] for e in m_entries]
+                        _vibrant = ["#7c3aed", "#2563eb", "#059669", "#d97706", "#dc2626", "#ec4899"]
+                        m_colors = [_vibrant[i % len(_vibrant)] for i in range(len(m_names))]
+                        st.markdown("**Top merchants this month:**")
+                        fig_m = go.Figure(go.Bar(
+                            x=m_vals[::-1], y=m_names[::-1], orientation="h",
+                            marker_color=m_colors[::-1],
+                            text=[f"${v:,.0f}" for v in m_vals[::-1]],
+                            textposition="auto", textfont=dict(color="white", size=11),
+                            hovertemplate="<b>%{y}</b><br>$%{x:,.0f}<extra></extra>",
+                        ))
+                        fig_m.update_layout(
+                            margin=dict(t=5, b=5, l=5, r=5), height=max(80, len(m_names) * 30 + 20),
+                            xaxis=dict(showgrid=False, showticklabels=False, zeroline=False),
+                            yaxis=dict(autorange=True),
+                            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                            font=dict(size=11),
+                        )
+                        st.plotly_chart(fig_m, use_container_width=True, config={"displayModeBar": False})
+
+                # Advanced analytics — plain English from cache
+                cached_adv = analytics_cache.get_cached_advanced(conn, cat)
+                if cached_adv:
+                    mk = cached_adv.get("mann_kendall", {})
+                    mk_trend = mk.get("trend", "")
+                    mk_strength = mk.get("strength", "none")
+
+                    if mk_trend and mk_trend != "insufficient_data" and mk_strength != "none":
+                        # Plain English trend description
+                        if mk_strength == "strong":
+                            trend_desc = f"Spending is **clearly {'rising' if mk_trend == 'increasing' else 'falling'}** over recent months"
+                        elif mk_strength == "moderate":
+                            trend_desc = f"Spending shows a **moderate {'upward' if mk_trend == 'increasing' else 'downward'}** trend"
+                        else:
+                            trend_desc = f"There's a **slight {'upward' if mk_trend == 'increasing' else 'downward'}** tendency"
+                        st.caption(trend_desc)
+
+                    seas = cached_adv.get("seasonality", {})
+                    if seas.get("has_seasonality") and seas.get("strength", 0) > 0.1:
+                        s_period = seas.get("period", 0)
+                        if s_period == 3:
+                            st.caption("This category has a **quarterly spending pattern** — expect ups and downs every ~3 months")
+                        elif s_period == 12:
+                            st.caption("This category follows a **yearly cycle** — compare to the same month last year for a better picture")
+                        else:
+                            st.caption(f"This category shows a **repeating pattern** every ~{s_period} months")
+
+            with col_action:
+                # Claude-driven preventive action (reads cache data)
+                ca = claude_actions.get(cat)
+                if ca:
+                    sev_icon = {"critical": "🔴", "warning": "🟠", "good": "🟢"}.get(ca.get("severity", "stable"), "🔵")
+                    st.markdown(escape_dollars(f"**{sev_icon} {ca.get('headline', '')}**"))
+
+                    if ca.get("severity") in ("critical", "warning"):
+                        st.error(escape_dollars(ca.get("action", "")))
+                    elif ca.get("severity") == "good":
+                        st.success(escape_dollars(ca.get("action", "")))
+                    else:
+                        st.info(escape_dollars(ca.get("action", "")))
+
+                    if ca.get("forecast_note"):
+                        st.caption(escape_dollars(f"🔮 {ca['forecast_note']}"))
+
+                    impact = ca.get("impact", 0)
+                    if impact:
+                        st.markdown(f"**Impact:** \\${impact:,.0f}/mo toward your savings target")
+                else:
+                    # Fallback: regression-based action when Claude unavailable
+                    if t_action:
+                        st.info(f"**{t_action}**")
+                    # Prophet forecast note from cache
+                    if cached_pf and cached_pf.get("forecast"):
+                        next_p = cached_pf["forecast"][0]["predicted"]
+                        st.caption(f"🔮 Forecast: \\${next_p:,.0f} next month")
+
+    # ── Three-tier card ordering ───────────────────────────────────
+    # Sort ALL categories using the SAME fill_pct logic as card colors
+    red_cats = []
+    yellow_cats = []
+    green_cats = []
+
+    for cat_data in month_breakdown:
+        cat = cat_data["category"]
+        spent = abs(cat_data["total"])
+        td = trend_results.get(cat, _default_trend_dict)
+        t_mean = float(td.get("mean", 0))
+
+        # Same threshold as card color logic
+        fill_pct = (spent / t_mean * 100) if t_mean > 0 else 50
+        excess = spent - t_mean
+
+        if fill_pct > 115:
+            red_cats.append((cat_data, td, excess))
+        elif fill_pct > 100:
+            yellow_cats.append((cat_data, td, excess))
+        else:
+            green_cats.append((cat_data, td, excess))
+
+    # Sort: RED/YELLOW by highest excess first; GREEN by highest spend first
+    red_cats.sort(key=lambda x: -x[2])
+    yellow_cats.sort(key=lambda x: -x[2])
+    green_cats.sort(key=lambda x: -abs(x[0]["total"]))
+
+    # ── RED: full-width, auto-expanded ────────────────────────────────
+    if red_cats:
+        st.markdown("#### ⚠ Needs Attention")
+        for cat_data, td, _ in red_cats:
+            sev = severity_map.get(td.get("severity", "normal"), severity_map["normal"])
+            _render_category_card(cat_data, td, sev, expanded_default=True)
+
+    # ── YELLOW: 2-column grid, collapsed ──────────────────────────────
+    if yellow_cats:
+        st.markdown("#### 👀 Monitor")
+        cols = st.columns(2)
+        for i, (cat_data, td, _) in enumerate(yellow_cats):
+            sev = severity_map.get(td.get("severity", "normal"), severity_map["normal"])
+            with cols[i % 2]:
+                _render_category_card(cat_data, td, sev, expanded_default=False)
+
+    # ── GREEN: 2-column grid, collapsed ───────────────────────────────
+    if green_cats:
+        st.markdown("#### ✅ On Track")
+        cols = st.columns(2)
+        for i, (cat_data, td, _) in enumerate(green_cats):
+            sev = severity_map.get(td.get("severity", "normal"), severity_map["normal"])
+            with cols[i % 2]:
+                _render_category_card(cat_data, td, sev, expanded_default=False)
+
+    # Monthly comparison donut chart
+    st.divider()
+    st.markdown(f"#### Where the Tracked ${total_spent:,.0f} Went")
+    top_cats = month_breakdown[:10]
+    fig = go.Figure(go.Pie(
+        labels=[c["category"] for c in top_cats],
+        values=[abs(c["total"]) for c in top_cats],
+        hole=0.45, textinfo="label+percent", textfont_size=10,
+        marker=dict(colors=CATEGORY_PALETTE[:len(top_cats)]),
+        hovertemplate="%{label}<br>$%{value:,.0f} (%{percent})<extra></extra>",
+    ))
+    fig.update_layout(**CHART_LAYOUT, height=400, showlegend=False,
+                     annotations=[dict(text=f"<b>${total_spent:,.0f}</b>",
+                                      x=0.5, y=0.5, font_size=16, showarrow=False)])
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
     conn.close()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PAGE: TRANSACTIONS
+# PAGE: TRANSACTIONS (with Upload Statements integrated)
 # ═══════════════════════════════════════════════════════════════════════════
 elif page == "Transactions":
     st.markdown("## Transactions")
     conn = get_conn()
     txn_count = database.get_transaction_count(conn)
+
+    # ── Upload Statements (expander) ─────────────────────────────────
+    _upload_expanded = txn_count == 0
+    with st.expander("Upload Statements", expanded=_upload_expanded):
+        # ── Coverage heatmap ──────────────────────────────────────────────────
+        coverage = database.get_account_coverage(conn)
+        if coverage:
+            # Build month range from earliest to latest across all accounts
+            all_months_covered = set()
+            all_earliest, all_latest = None, None
+            for info in coverage.values():
+                if info.get("months_covered"):
+                    all_months_covered.update(info["months_covered"])
+                if info.get("earliest"):
+                    if all_earliest is None or info["earliest"] < all_earliest:
+                        all_earliest = info["earliest"]
+                if info.get("latest"):
+                    if all_latest is None or info["latest"] > all_latest:
+                        all_latest = info["latest"]
+
+            # Generate full month range
+            all_months_range = []
+            if all_earliest and all_latest:
+                cur_d = date.fromisoformat(all_earliest).replace(day=1)
+                end_d = date.fromisoformat(all_latest).replace(day=1)
+                while cur_d <= end_d:
+                    all_months_range.append(cur_d.strftime("%Y-%m"))
+                    if cur_d.month == 12:
+                        cur_d = cur_d.replace(year=cur_d.year + 1, month=1)
+                    else:
+                        cur_d = cur_d.replace(month=cur_d.month + 1)
+
+            if all_months_range:
+                # Build heatmap data: rows = accounts, cols = months
+                all_acct_ids = list(config.ACCOUNTS.keys())
+                acct_labels = [config.ACCOUNTS[a]["label"] for a in all_acct_ids]
+                z_data = []
+                total_cells = 0
+                filled_cells = 0
+                for acct_id in all_acct_ids:
+                    row = []
+                    acct_months = set(coverage.get(acct_id, {}).get("months_covered", []))
+                    for m in all_months_range:
+                        total_cells += 1
+                        if m in acct_months:
+                            row.append(1)
+                            filled_cells += 1
+                        else:
+                            row.append(0)
+                    z_data.append(row)
+
+                # Month labels for x-axis (short form)
+                month_labels = [datetime.strptime(m, "%Y-%m").strftime("%b %y") for m in all_months_range]
+
+                completeness_pct = (filled_cells / total_cells * 100) if total_cells > 0 else 0
+
+                st.markdown("#### Coverage Heatmap")
+                st.caption(f"**{completeness_pct:.0f}%** complete ({filled_cells} of {total_cells} account-months)")
+
+                fig_heat = go.Figure(data=go.Heatmap(
+                    z=z_data,
+                    x=month_labels,
+                    y=acct_labels,
+                    colorscale=[[0, '#ef4444'], [1, '#22c55e']],
+                    showscale=True,
+                    colorbar=dict(
+                        title="", tickvals=[0, 1], ticktext=["Missing", "Has Data"],
+                        len=0.5, thickness=12,
+                    ),
+                    hovertemplate="<b>%{y}</b><br>%{x}<br>%{customdata}<extra></extra>",
+                    customdata=[["Has data" if cell == 1 else "Missing" for cell in row] for row in z_data],
+                    xgap=3, ygap=4,
+                ))
+                # Show every 3rd month label to reduce crowding
+                tick_interval = max(1, len(month_labels) // 15)
+                fig_heat.update_layout(
+                    **CHART_LAYOUT,
+                    height=max(180, 55 * len(all_acct_ids)),
+                    xaxis=dict(side="top", tickangle=-45, dtick=tick_interval),
+                    yaxis=dict(autorange="reversed"),
+                )
+                st.plotly_chart(fig_heat, use_container_width=True, config={"displayModeBar": False})
+
+                # Missing months — actionable items
+                missing_months = database.get_missing_months(conn)
+                if missing_months:
+                    with st.expander(f"Missing months ({len(missing_months)})", expanded=len(missing_months) <= 6):
+                        for item in missing_months:
+                            label = config.ACCOUNTS.get(item["account_id"], {}).get("label", item["account_id"])
+                            ym = datetime.strptime(item["year_month"], "%Y-%m").strftime("%B %Y")
+                            st.markdown(f"- Upload **{label}** for **{ym}**")
+            else:
+                st.info("No statements yet. Drop your first PDF or CSV below.")
+        else:
+            st.info("No statements yet. Drop your first PDF or CSV below.")
+
+        st.divider()
+
+        # ── File uploader ─────────────────────────────────────────────────────
+        uploaded_files = st.file_uploader(
+            "Drop PDF or CSV statements",
+            type=["pdf", "csv"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+        )
+
+        if uploaded_files:
+            advisor = get_advisor()
+            existing_stmts = database.get_all_statements(conn)
+            existing_periods = [
+                {"account_id": s["account_id"], "period_start": s["period_start"], "period_end": s["period_end"]}
+                for s in existing_stmts
+            ]
+
+            for uploaded_file in uploaded_files:
+                st.divider()
+                file_bytes = uploaded_file.read()
+                file_hash = pdf_parser.compute_bytes_hash(file_bytes)
+                is_csv = uploaded_file.name.lower().endswith(".csv")
+
+                st.markdown(f"#### {uploaded_file.name}")
+
+                # STEP 1: Detect account + period
+                if is_csv:
+                    with st.spinner("Analyzing CSV..."):
+                        detected_account = csv_parser.identify_account_from_csv(file_bytes, uploaded_file.name)
+                        try:
+                            quick_result = csv_parser.parse_chase_csv(file_bytes, account_hint=detected_account)
+                            period_start = quick_result.get("period_start")
+                            period_end = quick_result.get("period_end")
+                        except Exception as e:
+                            st.error(f"CSV parsing failed: {e}")
+                            continue
+                    detection_reasons = ["Transaction pattern analysis" if detected_account else ""]
+                    page_count = None
+                    is_checking = detected_account == "joint_checking"
+                else:
+                    with st.spinner("Scanning PDF..."):
+                        analysis = pdf_parser.analyze_upload(file_bytes, uploaded_file.name)
+                        detected_account = analysis["detected_account"]
+                        period_start = analysis["period_start"]
+                        period_end = analysis["period_end"]
+                        detection_reasons = analysis["detection_reasons"]
+                        page_count = analysis["page_count"]
+                        is_checking = analysis["is_checking"]
+
+                # Account confirmation
+                acct_label = config.ACCOUNTS.get(detected_account, {}).get("label", "Unknown")
+                account_options = list(config.ACCOUNTS.keys())
+                default_idx = account_options.index(detected_account) if detected_account in account_options else 0
+                account_id = st.selectbox(
+                    "Confirm account:",
+                    account_options,
+                    index=default_idx,
+                    format_func=lambda x: f"{config.ACCOUNTS[x]['label']} ({config.ACCOUNTS[x]['owner']})",
+                    key=f"acct_{uploaded_file.name}",
+                )
+
+                # STEP 2: Period check
+                if period_start and period_end:
+                    upload_status = database.classify_upload(conn, account_id, period_start, period_end, file_hash)
+                else:
+                    upload_status = {"status": "new", "message": "Period unknown — importing all.", "action": "import", "new_transactions_likely": True}
+
+                status_colors = {"new": "success", "extends": "info", "duplicate_file": "error", "duplicate_period": "warning", "overlapping": "warning"}
+                getattr(st, status_colors.get(upload_status["status"], "info"))(upload_status["message"])
+
+                # Warn if statement is old (> 12 months)
+                _old_statement = False
+                if period_start and period_start != "unknown":
+                    try:
+                        _ps = date.fromisoformat(period_start)
+                        _age_days = (date.today() - _ps).days
+                        if _age_days > 365:
+                            st.warning(f"This statement is from **{period_start}** ({_age_days // 30} months ago). "
+                                       f"Old data may reduce forecast accuracy. Transactions older than 18 months will be skipped.")
+                            _old_statement = True
+                    except (ValueError, TypeError):
+                        pass
+
+                if upload_status["action"] == "skip":
+                    continue
+
+                should_proceed = True
+                if upload_status["action"] == "ask_user":
+                    should_proceed = st.checkbox("Import anyway? (duplicates auto-skipped)", key=f"force_{uploaded_file.name}")
+                if not should_proceed:
+                    continue
+
+                # STEP 3: Extract transactions
+                if is_csv:
+                    result = quick_result
+                    result["account_id"] = account_id
+                else:
+                    # Check if this is a Chase Spending Report (instant parsing, no Claude needed)
+                    is_spending_report = chase_report_parser.is_spending_report(analysis["raw_text"])
+
+                    if is_spending_report:
+                        with st.spinner("Parsing Chase Spending Report (instant)..."):
+                            try:
+                                result = chase_report_parser.parse_spending_report(
+                                    file_bytes, uploaded_file.name, raw_text=analysis["raw_text"]
+                                )
+                                result["account_id"] = account_id
+                            except Exception as e:
+                                st.error(f"Spending report parsing failed: {e}")
+                                continue
+                    elif is_checking:
+                        # Chase Checking Statement — direct regex parsing (instant, no Claude)
+                        with st.spinner("Parsing Chase Checking Statement (instant)..."):
+                            try:
+                                result = chase_report_parser.parse_checking_statement(
+                                    file_bytes, uploaded_file.name,
+                                    raw_text=analysis["raw_text"],
+                                    period_start=period_start or "",
+                                    period_end=period_end or "",
+                                )
+                                result["account_id"] = account_id
+                            except Exception as e:
+                                st.error(f"Checking statement parsing failed: {e}")
+                                continue
+                    else:
+                        # Regular PDF statement — needs Claude
+                        if not advisor:
+                            st.error("Set your Anthropic API key in Settings to process PDFs.")
+                            continue
+                        with st.spinner("Claude is extracting transactions..."):
+                            try:
+                                result = advisor.extract_transactions(
+                                    raw_text=analysis["raw_text"], tables=analysis["tables"],
+                                    account_hint=account_id, existing_periods=existing_periods,
+                                    is_checking=is_checking,
+                                    categories=category_engine.get_active_categories(conn),
+                                )
+                            except Exception as e:
+                                st.error(f"Extraction failed: {e}")
+                                continue
+
+                    if not period_start:
+                        period_start = result.get("period_start", "")
+                    if not period_end:
+                        period_end = result.get("period_end", "")
+
+                # STEP 4: Auto-import transactions
+                transactions = result.get("transactions", [])
+                if not transactions:
+                    st.warning("No transactions found.")
+                    continue
+
+                # Normalize all dates to YYYY-MM-DD before saving
+                year_hint = (period_start or "")[:4] if period_start and period_start != "unknown" else ""
+                transactions = normalize_transactions(transactions, year_hint)
+                period_start = normalize_date(period_start or "unknown", year_hint)
+                period_end = normalize_date(period_end or "unknown", year_hint)
+
+                # Date validation: reject transactions with invalid/missing dates
+                import re as _re
+                valid_txns = []
+                bad_dates = 0
+                for txn in transactions:
+                    d = txn.get("date", "")
+                    if d and d != "unknown" and _re.match(r'^\d{4}-\d{2}-\d{2}$', d):
+                        valid_txns.append(txn)
+                    else:
+                        bad_dates += 1
+                if bad_dates > 0:
+                    st.warning(f"Skipped {bad_dates} transactions with invalid dates.")
+                transactions = valid_txns
+
+                # Auto-import (skip if already imported on a previous rerun)
+                if database.check_duplicate_statement(conn, file_hash):
+                    st.info(f"Already imported: **{uploaded_file.name}** ({len(transactions)} transactions)")
+                    continue
+
+                stmt_id = database.insert_statement(
+                    conn, uploaded_file.name, account_id,
+                    period_start, period_end, file_hash,
+                    notes=f"Status: {upload_status['status']}",
+                )
+                for txn in transactions:
+                    txn["account_id"] = account_id
+                    txn["statement_id"] = stmt_id
+
+                inserted = database.bulk_insert_transactions(conn, transactions)
+                database.update_statement_txn_count(conn, stmt_id, inserted)
+                skipped = len(transactions) - inserted
+
+                # Invalidate analytics cache after successful import
+                analytics_cache.invalidate(conn)
+                st.session_state['analytics_stale'] = True
+
+                # Auto-fix: if period is still unknown, derive from actual transaction dates
+                if not period_start or period_start == "unknown" or not period_end or period_end == "unknown":
+                    date_row = conn.execute(
+                        "SELECT MIN(date) as d1, MAX(date) as d2 FROM transactions WHERE statement_id = ?",
+                        (stmt_id,),
+                    ).fetchone()
+                    if date_row and date_row["d1"] and date_row["d1"] != "unknown":
+                        conn.execute(
+                            "UPDATE statements SET period_start = ?, period_end = ? WHERE id = ?",
+                            (date_row["d1"], date_row["d2"], stmt_id),
+                        )
+                        conn.commit()
+
+                # ── Clean upload summary ──────────────────────────────────────
+                charges = sum(t["amount"] for t in transactions if t["amount"] < 0)
+                credits_total = sum(t["amount"] for t in transactions if t["amount"] > 0)
+                final_label = config.ACCOUNTS.get(account_id, {}).get("label", account_id)
+                period_display = f"{period_start} to {period_end}" if period_start and period_end else "Unknown period"
+                dup_note = f" (skipped {skipped} duplicates)" if skipped > 0 else ""
+
+                with st.container():
+                    st.success(
+                        f"**{final_label}** | {period_display} | "
+                        f"**{inserted}** transactions imported{dup_note} | "
+                        f"Charges: \\${abs(charges):,.2f}"
+                    )
+                    if result.get("analysis_notes"):
+                        st.caption(result["analysis_notes"])
+
+                    # Category breakdown (collapsed)
+                    from collections import Counter
+                    cat_counts = Counter(t["category"] for t in transactions if t["amount"] < 0)
+                    cat_totals = {}
+                    for t in transactions:
+                        if t["amount"] < 0:
+                            cat_totals[t["category"]] = cat_totals.get(t["category"], 0) + abs(t["amount"])
+                    with st.expander(f"Category breakdown ({len(cat_counts)} categories)"):
+                        for cat, total in sorted(cat_totals.items(), key=lambda x: -x[1]):
+                            st.write(f"**{cat}**: \\${total:,.2f} ({cat_counts[cat]} txns)")
+
+    # If no transactions after upload section, stop here
+    txn_count = database.get_transaction_count(conn)
     if txn_count == 0:
-        st.info("No transactions yet.")
+        st.info("No transactions yet. Upload a statement above to get started.")
         conn.close()
         st.stop()
 
@@ -1636,14 +1491,15 @@ elif page == "Transactions":
     # ── Tab 1: Transaction Browser ──────────────────────────────────────
     with tab_txns:
         date_range = database.get_date_range(conn)
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
+        _fc1, _fc2 = st.columns(2)
+        with _fc1:
             start = st.date_input("From", value=date.fromisoformat(date_range[0]) if date_range[0] else date.today() - timedelta(days=90))
-        with c2:
+        with _fc2:
             end = st.date_input("To", value=date.fromisoformat(date_range[1]) if date_range[1] else date.today())
-        with c3:
+        _fc3, _fc4 = st.columns(2)
+        with _fc3:
             acct = st.selectbox("Account", ["All"] + list(config.ACCOUNTS.keys()))
-        with c4:
+        with _fc4:
             cat = st.selectbox("Category", ["All"] + active_categories)
 
         # Exclude non-spending categories by default
@@ -1711,7 +1567,7 @@ elif page == "Transactions":
                 texttemplate="%{label}<br>$%{value:,.0f}",
                 hovertemplate="<b>%{label}</b><br>Spend: $%{value:,.0f}<br>Transactions: %{customdata[0]}<extra></extra>",
             )
-            st.plotly_chart(fig_tree, use_container_width=True)
+            st.plotly_chart(fig_tree, use_container_width=True, config={"displayModeBar": False})
 
         # Stacked area chart — category evolution over time
         st.markdown("#### Category Trends Over Time")
@@ -1738,7 +1594,7 @@ elif page == "Transactions":
                 xaxis_title=None, yaxis_title="Monthly Spend",
                 legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
             )
-            st.plotly_chart(fig_area, use_container_width=True)
+            st.plotly_chart(fig_area, use_container_width=True, config={"displayModeBar": False})
         else:
             st.info("Not enough data for trend analysis.")
 
@@ -1882,167 +1738,44 @@ elif page == "Transactions":
                     st.session_state.recat_proposals = None
                     st.session_state.recat_applied = None
                     st.rerun()
-                    st.rerun()
 
     conn.close()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PAGE: FINANCIAL ADVISOR
+# PAGE: INSIGHTS & ADVISOR
 # ═══════════════════════════════════════════════════════════════════════════
-elif page == "Financial Advisor":
-    st.markdown("## Financial Advisor")
-    advisor = get_advisor()
-    if not advisor:
-        st.error("Set your Anthropic API key in Settings.")
-        st.stop()
-
-    conn = get_conn()
-    financial_context = database.get_financial_context(conn)
-    tactical_context = None
-    try:
-        tactical_context = spending_intelligence.build_tactical_context(conn)
-    except Exception:
-        pass
-
-    if not st.session_state.chat_history:
-        db_history = database.get_conversation(conn, st.session_state.session_id)
-        if db_history:
-            st.session_state.chat_history = db_history
-        else:
-            with st.spinner("Claude is reviewing your finances..."):
-                try:
-                    welcome = advisor.get_welcome_message(financial_context)
-                    st.session_state.chat_history.append({"role": "assistant", "content": welcome})
-                    database.save_conversation(conn, st.session_state.session_id, "assistant", welcome)
-                except Exception:
-                    st.session_state.chat_history.append({"role": "assistant", "content": "Hello! Upload some statements and let's review your spending."})
-
-    # Quick actions
-    qcols = st.columns(4)
-    quick = {
-        "Overlap Status": "How are we tracking for the daycare overlap? Specific numbers please.",
-        "Save This Week": "What are 3 specific things I can do THIS WEEK to save money?",
-        "Spending Check": "Compare this month to our average. What's over budget?",
-        "Where to Cut": "Where are the easiest $300/month in cuts?",
-    }
-    for (label, prompt), col in zip(quick.items(), qcols):
-        if col.button(label, use_container_width=True):
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            database.save_conversation(conn, st.session_state.session_id, "user", prompt)
-            st.session_state["_pending_advisor_msg"] = prompt
-            st.rerun()
-
-    # Display chat history (escape $ at display time only)
-    for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]):
-            display_text = escape_dollars(msg["content"]) if msg["role"] == "assistant" else msg["content"]
-            st.markdown(display_text)
-
-    # Check if there's an unanswered user message (from quick action or previous rerun)
-    needs_response = (
-        st.session_state.chat_history
-        and st.session_state.chat_history[-1]["role"] == "user"
-    )
-
-    def _get_response(user_msg):
-        """Call Claude and return response text."""
-        try:
-            result = advisor.get_advisor_response(
-                user_message=user_msg,
-                conversation_history=st.session_state.chat_history[:-1],
-                financial_context=financial_context,
-                tactical_context=tactical_context,
-            )
-            text = result.get("response", str(result))
-            return text  # Return raw — escaping happens at display time
-        except Exception as e:
-            err = str(e)
-            if "credit balance" in err.lower() or "billing" in err.lower():
-                return "**API credits exhausted.** Please add credits at [console.anthropic.com/settings/billing](https://console.anthropic.com/settings/billing) to continue using the advisor."
-            return f"**Error:** {err[:200]}. Please try again."
-
-    if needs_response:
-        pending_msg = st.session_state.chat_history[-1]["content"]
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                text = _get_response(pending_msg)
-            st.markdown(escape_dollars(text))
-            st.session_state.chat_history.append({"role": "assistant", "content": text})
-            database.save_conversation(conn, st.session_state.session_id, "assistant", text)
-
-    # Chat input
-    user_input = st.chat_input("Ask your advisor...")
-    if user_input:
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
-        database.save_conversation(conn, st.session_state.session_id, "user", user_input)
-        with st.chat_message("user"):
-            st.markdown(user_input)
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                text = _get_response(user_input)
-            st.markdown(escape_dollars(text))
-            st.session_state.chat_history.append({"role": "assistant", "content": text})
-            database.save_conversation(conn, st.session_state.session_id, "assistant", text)
-    conn.close()
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# PAGE: FORECASTS & GOALS
-# ═══════════════════════════════════════════════════════════════════════════
-elif page == "Forecasts & Goals":
+elif page == "Insights & Advisor":
     import analytics
 
-    st.markdown("## Forecasts & Goals")
+    st.markdown("## Insights & Advisor")
     conn = get_conn()
-    df = models.project_cash_flow()
 
-    # Savings target
-    savings_target = int(database.get_setting(conn, "monthly_savings_target", "1000"))
-    new_target = st.number_input(
-        "Monthly Savings Target (\\$/mo)", min_value=0, max_value=5000,
-        value=savings_target, step=100, key="savings_target_input",
-    )
-    if new_target != savings_target:
-        database.set_setting(conn, "monthly_savings_target", str(new_target))
-        savings_target = new_target
+    tab_cashflow, tab_forecast, tab_goals, tab_scenarios, tab_advisor = st.tabs([
+        "Cash Flow", "Forecasts", "Goals", "Scenarios", "AI Advisor"
+    ])
 
-    # Report frequency
-    _period_options = ["weekly", "biweekly", "monthly"]
-    _current_period = database.get_setting(conn, "report_period", "weekly")
-    _period_idx = _period_options.index(_current_period) if _current_period in _period_options else 0
-    new_period = st.selectbox(
-        "Report Frequency", _period_options,
-        index=_period_idx, format_func=lambda x: {"weekly": "Every Week", "biweekly": "Every 2 Weeks", "monthly": "Monthly"}[x],
-        key="report_period_input",
-    )
-    if new_period != _current_period:
-        database.set_setting(conn, "report_period", new_period)
+    # ── Cash Flow tab ─────────────────────────────────────────────────
+    with tab_cashflow:
+        df = models.project_cash_flow()
+        savings_target = int(database.get_setting(conn, "monthly_savings_target", "1000"))
+        savings_status = models.compute_savings_status(conn, savings_target)
 
-    # Compute savings status from actual data
-    savings_status = models.compute_savings_status(conn, savings_target)
-
-    # Confidence intervals (from cache or None)
-    ci_low, ci_high = None, None
-
-    tab1, tab2, tab3 = st.tabs(["Cash Flow", "Goals", "Scenarios"])
-
-    with tab1:
-        # Summary metrics centered on savings target
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Savings Target", f"\\${savings_target:,}/mo")
-        c2.metric("Current Avg Net", f"\\${savings_status['actual_avg_net']:,.0f}/mo",
+        # Summary metrics — 2 columns, 2 rows
+        _r1c1, _r1c2 = st.columns(2)
+        _r1c1.metric("Savings Target", f"\\${savings_target:,}/mo")
+        _r1c2.metric("Current Avg Net", f"\\${savings_status['actual_avg_net']:,.0f}/mo",
                   delta="On track" if savings_status["on_track"] else f"\\${savings_status['current_gap']:,.0f} short",
                   delta_color="normal" if savings_status["on_track"] else "inverse")
-        c3.metric("Projected Avg Net", f"\\${savings_status['projected_avg_net']:,.0f}/mo")
-        c4.metric("Months Analyzed", savings_status["months_analyzed"])
+        _r2c1, _r2c2 = st.columns(2)
+        _r2c1.metric("Projected Avg Net", f"\\${savings_status['projected_avg_net']:,.0f}/mo")
+        _r2c2.metric("Months Analyzed", savings_status["months_analyzed"])
 
-        st.plotly_chart(make_monthly_net_chart(df, height=300), use_container_width=True)
-        st.plotly_chart(make_cumulative_chart(df, height=370, ci_low=ci_low, ci_high=ci_high), use_container_width=True)
-        st.plotly_chart(make_daycare_chart(df), use_container_width=True)
+        st.plotly_chart(make_monthly_net_chart(df, height=300), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(make_cumulative_chart(df, height=370), use_container_width=True, config={"displayModeBar": False})
 
-        # Prophet spending forecast
-        st.divider()
+    # ── Forecasts tab ─────────────────────────────────────────────────
+    with tab_forecast:
         st.markdown("#### ML Spending Forecast (Facebook Prophet)")
         forecast_conn = get_conn()
         try:
@@ -2097,7 +1830,7 @@ elif page == "Forecasts & Goals":
                                  legend=dict(orientation="h", yanchor="bottom", y=1.02, font_size=10),
                                  yaxis=dict(title="Monthly Spending ($)", gridcolor="#f3f4f6", tickformat="$,.0f"),
                                  xaxis=dict(gridcolor="#f3f4f6"))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Model Accuracy (MAPE)", f"{prophet_result['mape']:.1f}%")
@@ -2112,21 +1845,16 @@ elif page == "Forecasts & Goals":
             st.caption(f"Prophet forecast unavailable: {e}")
         forecast_conn.close()
 
-    with tab2:
-        conn = get_conn()
-        objectives = database.get_active_objectives(conn)
+    # ── Goals tab ─────────────────────────────────────────────────────
+    with tab_goals:
+        goals_conn = get_conn()
+        objectives = database.get_active_objectives(goals_conn)
 
         for obj in objectives:
             target = obj["target"] or 0
             if target > 0:
-                # Calculate progress
-                if obj["objective_id"] == "daycare_overlap":
-                    current = df[df["phase"] == "Geo only"]["monthly_net"].sum()
-                elif obj["objective_id"] == "post_daycare_freedom":
-                    current = df[df["month"] == "2031-08"].iloc[0]["cumulative"]
-                else:
-                    current = 0
-                pct = min(1.0, max(0.0, current / target))
+                current = 0
+                pct = min(1.0, max(0.0, current / target)) if target > 0 else 0
                 st.progress(pct, text=f"**{obj['label']}**: ${current:,.0f} / ${target:,.0f} ({pct*100:.0f}%)")
             else:
                 st.write(f"**{obj['label']}**: {obj['description'] or ''}")
@@ -2134,19 +1862,24 @@ elif page == "Forecasts & Goals":
         st.divider()
         st.markdown("#### Add Goal")
         with st.form("new_goal"):
-            label = st.text_input("Goal name", placeholder="e.g., Debt-free by overlap")
+            label = st.text_input("Goal name", placeholder="e.g., Emergency fund $10k")
             target = st.number_input("Target ($)", min_value=0, value=0, step=500)
             deadline = st.date_input("Deadline", value=None)
             if st.form_submit_button("Create", type="primary") and label:
                 oid = label.lower().replace(" ", "_")[:30]
-                database.create_objective(conn, oid, label, target=target if target > 0 else None,
+                database.create_objective(goals_conn, oid, label, target=target if target > 0 else None,
                                          deadline=deadline.isoformat() if deadline else None)
                 st.rerun()
-        conn.close()
+        goals_conn.close()
 
-    with tab3:
+    # ── Scenarios tab ─────────────────────────────────────────────────
+    with tab_scenarios:
         st.markdown("#### What-If Scenarios")
         st.caption("Adjust the sliders to see how spending cuts change your trajectory.")
+
+        scenario_df = models.project_cash_flow()
+        savings_target = int(database.get_setting(conn, "monthly_savings_target", "1000"))
+        savings_status = models.compute_savings_status(conn, savings_target)
 
         c1, c2 = st.columns(2)
         with c1:
@@ -2160,409 +1893,153 @@ elif page == "Forecasts & Goals":
         total_cut = dining_cut + costco_cut + clothing_cut + amazon_cut + home_cut
 
         adjustments = {"dining": -dining_cut, "costco": -costco_cut, "clothing": -clothing_cut, "amazon": -amazon_cut, "home": -home_cut}
-        scenario_df = models.scenario_model(df, adjustments)
+        scenario_result = models.scenario_model(scenario_df, adjustments)
 
-        # Impact summary focused on savings target
+        # Impact summary — 2 columns, 2 rows
         new_net = savings_status["projected_avg_net"] + total_cut
         meets_target = new_net >= savings_target
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Monthly Cuts", f"\\${total_cut:,}/mo")
-        c2.metric("New Monthly Net", f"\\${new_net:,.0f}/mo",
+        _si1, _si2 = st.columns(2)
+        _si1.metric("Monthly Cuts", f"\\${total_cut:,}/mo")
+        _si2.metric("New Monthly Net", f"\\${new_net:,.0f}/mo",
                   delta=f"+\\${total_cut:,} vs current")
-        c3.metric("Target Status", "Met" if meets_target else f"\\${savings_target - new_net:,.0f} short",
+        _si3, _si4 = st.columns(2)
+        _si3.metric("Target Status", "Met" if meets_target else f"\\${savings_target - new_net:,.0f} short",
                   delta="On track" if meets_target else "Needs more cuts",
                   delta_color="normal" if meets_target else "inverse")
         annual_impact = total_cut * 12
-        c4.metric("Annual Impact", f"\\${annual_impact:,}")
+        _si4.metric("Annual Impact", f"\\${annual_impact:,}")
 
         # Comparison chart
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=df["month"], y=df["cumulative"], mode="lines", name="Current Path",
+            x=scenario_df["month"], y=scenario_df["cumulative"], mode="lines", name="Current Path",
             line=dict(color=PALETTE["gray"], dash="dash", width=2),
             hovertemplate="Current: $%{y:,.0f}<extra></extra>",
         ))
         fig.add_trace(go.Scatter(
-            x=scenario_df["month"], y=scenario_df["cumulative"], mode="lines", name="With Cuts",
+            x=scenario_result["month"], y=scenario_result["cumulative"], mode="lines", name="With Cuts",
             line=dict(color=PALETTE["green"], width=3),
             fill="tonexty", fillcolor="rgba(34,197,94,0.06)",
             hovertemplate="Scenario: $%{y:,.0f}<extra></extra>",
         ))
-        fig.add_vrect(x0="2027-08", x1="2028-08", fillcolor=PALETTE["red"], opacity=0.06, line_width=0)
         fig.add_hline(y=0, line_color=PALETTE["gray_light"], line_width=1)
         fig.update_layout(**CHART_LAYOUT, height=420,
                          legend=dict(orientation="h", yanchor="bottom", y=1.02),
                          yaxis=dict(title="Cumulative Savings ($)", gridcolor="#f3f4f6", tickformat="$,.0f"),
                          xaxis=dict(gridcolor="#f3f4f6", dtick="M6"))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# PAGE: REPORTS & TELEGRAM
-# ═══════════════════════════════════════════════════════════════════════════
-elif page == "Reports & Telegram":
-    import analytics
-    from collections import Counter
-
-    st.markdown("## Weekly Report")
-    conn = get_conn()
-    advisor = get_advisor()
-
-    tab1, tab2 = st.tabs(["This Week's Report", "Telegram Setup"])
-
-    with tab1:
-        data = reports.gather_report_data(conn)
-        gap_info = models.compute_overlap_gap()
-        week_total = abs(data["week_spending_total"])
-        week_txns = data["week_transactions"]
-
-        if not week_txns:
-            st.info("No transactions this week. Upload a statement to generate a report.")
+    # ── AI Advisor tab ────────────────────────────────────────────────
+    with tab_advisor:
+        advisor = get_advisor()
+        if not advisor:
+            st.error("Set your Anthropic API key in Settings.")
         else:
-            # ── HEADER: Savings target + week summary ──────────────────
-            header_col1, header_col2 = st.columns([2, 1])
-            with header_col1:
-                from calendar import month_name as _mname
-                today = date.today()
-                st.markdown(f"### Week of {data['week_start']} to {data['report_date']}")
-            with header_col2:
-                savings_target = int(database.get_setting(conn, "monthly_savings_target", "1000"))
-                st.metric("Savings Target", f"${savings_target:,}/mo")
+            financial_context = database.get_financial_context(conn)
+            tactical_context = None
+            try:
+                tactical_context = spending_intelligence.build_tactical_context(conn)
+            except Exception:
+                pass
 
-            # ── SECTION 1: Week at a Glance ───────────────────────────────
-            st.markdown("#### This Week at a Glance")
+            if not st.session_state.chat_history:
+                db_history = database.get_conversation(conn, st.session_state.session_id)
+                if db_history:
+                    st.session_state.chat_history = db_history
+                else:
+                    with st.spinner("Claude is reviewing your finances..."):
+                        try:
+                            welcome = advisor.get_welcome_message(financial_context)
+                            st.session_state.chat_history.append({"role": "assistant", "content": welcome})
+                            database.save_conversation(conn, st.session_state.session_id, "assistant", welcome)
+                        except Exception:
+                            st.session_state.chat_history.append({"role": "assistant", "content": "Hello! Upload some statements and let's review your spending."})
 
-            # Compare to last week
-            last_week_txns = database.get_transactions(
-                conn,
-                start_date=(date.today() - timedelta(days=14)).isoformat(),
-                end_date=(date.today() - timedelta(days=7)).isoformat(),
+            # Quick actions — 2 columns, 2 rows
+            _qa1, _qa2 = st.columns(2)
+            quick = {
+                "Savings Check": "Savings Check: Am I on track to meet my savings target? Show me the numbers.",
+                "Save This Week": "What are 3 specific things I can do THIS WEEK to save money?",
+                "Spending Check": "Compare this month to our average. What's over budget?",
+                "Where to Cut": "Where are the easiest $300/month in cuts?",
+            }
+            _quick_items = list(quick.items())
+            if _qa1.button(_quick_items[0][0], use_container_width=True):
+                st.session_state.chat_history.append({"role": "user", "content": _quick_items[0][1]})
+                database.save_conversation(conn, st.session_state.session_id, "user", _quick_items[0][1])
+                st.session_state["_pending_advisor_msg"] = _quick_items[0][1]
+                st.rerun()
+            if _qa2.button(_quick_items[1][0], use_container_width=True):
+                st.session_state.chat_history.append({"role": "user", "content": _quick_items[1][1]})
+                database.save_conversation(conn, st.session_state.session_id, "user", _quick_items[1][1])
+                st.session_state["_pending_advisor_msg"] = _quick_items[1][1]
+                st.rerun()
+            _qa3, _qa4 = st.columns(2)
+            if _qa3.button(_quick_items[2][0], use_container_width=True):
+                st.session_state.chat_history.append({"role": "user", "content": _quick_items[2][1]})
+                database.save_conversation(conn, st.session_state.session_id, "user", _quick_items[2][1])
+                st.session_state["_pending_advisor_msg"] = _quick_items[2][1]
+                st.rerun()
+            if _qa4.button(_quick_items[3][0], use_container_width=True):
+                st.session_state.chat_history.append({"role": "user", "content": _quick_items[3][1]})
+                database.save_conversation(conn, st.session_state.session_id, "user", _quick_items[3][1])
+                st.session_state["_pending_advisor_msg"] = _quick_items[3][1]
+                st.rerun()
+
+            # Display chat history (escape $ at display time only)
+            for msg in st.session_state.chat_history:
+                with st.chat_message(msg["role"]):
+                    display_text = escape_dollars(msg["content"]) if msg["role"] == "assistant" else msg["content"]
+                    st.markdown(display_text)
+
+            # Check if there's an unanswered user message (from quick action or previous rerun)
+            needs_response = (
+                st.session_state.chat_history
+                and st.session_state.chat_history[-1]["role"] == "user"
             )
-            last_week_total = abs(sum(t["amount"] for t in last_week_txns if t["amount"] < 0))
-            wow_change = week_total - last_week_total if last_week_total > 0 else 0
 
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Total Spent", f"\\${week_total:,.0f}")
-            c2.metric("vs Last Week", f"\\${abs(wow_change):,.0f}",
-                      delta=f"{'↑' if wow_change > 0 else '↓'} \\${abs(wow_change):,.0f}",
-                      delta_color="inverse" if wow_change > 0 else "normal")
-            c3.metric("Transactions", len(week_txns))
-            c4.metric("Avg per Txn", f"\\${week_total / max(len(week_txns), 1):,.0f}")
-
-            # ── SECTION 2: Top Categories This Week ───────────────────────
-            st.markdown("#### Spending Breakdown")
-            cat_totals = {}
-            cat_counts = Counter()
-            for t in week_txns:
-                if t["amount"] < 0 and t["category"] in category_engine.get_active_categories(conn):
-                    cat = t["category"]
-                    cat_totals[cat] = cat_totals.get(cat, 0) + abs(t["amount"])
-                    cat_counts[cat] += 1
-            sorted_cats = sorted(cat_totals.items(), key=lambda x: -x[1])
-
-            if sorted_cats:
-                cats_list = [c[0] for c in sorted_cats[:10]]
-                vals_list = [c[1] for c in sorted_cats[:10]]
-                fig = go.Figure(go.Bar(
-                    x=vals_list, y=cats_list, orientation="h",
-                    marker_color=CATEGORY_PALETTE[:len(cats_list)],
-                    text=[f"${v:,.0f}" for v in vals_list],
-                    textposition="auto",
-                    hovertemplate="<b>%{y}</b><br>$%{x:,.0f}<extra></extra>",
-                ))
-                fig.update_layout(**CHART_LAYOUT, height=max(250, len(cats_list) * 35 + 80),
-                                 showlegend=False, yaxis=dict(autorange="reversed"),
-                                 xaxis=dict(title="Amount ($)", gridcolor="#f3f4f6", tickformat="$,.0f"))
-                st.plotly_chart(fig, use_container_width=True)
-
-            # ── SECTION 3: Big Charges ────────────────────────────────────
-            big_charges = [t for t in week_txns if t["amount"] < -150]
-            if big_charges:
-                st.markdown("#### Notable Charges (> \\$150)")
-                for t in sorted(big_charges, key=lambda x: x["amount"]):
-                    st.markdown(f"- **\\${abs(t['amount']):,.0f}** — {t['description']} ({t['category']}) on {t['date']}")
-
-            # ── SECTION 4: Prophet Forecasts — Preventive Actions ─────────
-            st.divider()
-            st.markdown("#### 🔮 Next Month Preview — Preventive Actions")
-            st.caption("Prophet ML forecasts based on your spending history. Act now to prevent overspending.")
-
-            forecast_cats = sorted_cats[:8] if sorted_cats else []
-            rising_forecasts = []
-            falling_forecasts = []
-
-            for cat_name, cat_spent in forecast_cats:
+            def _get_response(user_msg):
+                """Call Claude and return response text."""
                 try:
-                    pf = analytics.prophet_forecast_category(conn, cat_name, periods=1)
-                    if not pf or not pf["forecast"]:
-                        continue
-                    predicted = pf["forecast"][0]["predicted"]
-                    avg = pf.get("historical_avg", 0)
-                    if avg <= 0:
-                        continue
-                    diff = predicted - avg
-                    pct_diff = (diff / avg) * 100
-                    entry = {"cat": cat_name, "predicted": predicted, "avg": avg,
-                             "diff": diff, "pct": pct_diff, "month": pf["forecast"][0]["month"]}
-                    if pct_diff > 10:
-                        rising_forecasts.append(entry)
-                    elif pct_diff < -10:
-                        falling_forecasts.append(entry)
-                except Exception:
-                    pass
-
-            if rising_forecasts:
-                for f in sorted(rising_forecasts, key=lambda x: -x["diff"]):
-                    st.error(
-                        f"**{f['cat']}** — Forecast: **\\${f['predicted']:,.0f}** for {f['month']} "
-                        f"(\\${f['diff']:+,.0f} vs avg \\${f['avg']:,.0f}). "
-                        f"**Cut back now** to prevent this from happening."
+                    result = advisor.get_advisor_response(
+                        user_message=user_msg,
+                        conversation_history=st.session_state.chat_history[:-1],
+                        financial_context=financial_context,
+                        tactical_context=tactical_context,
                     )
-            if falling_forecasts:
-                for f in sorted(falling_forecasts, key=lambda x: x["diff"]):
-                    st.success(
-                        f"**{f['cat']}** — Trending down to **\\${f['predicted']:,.0f}** "
-                        f"(saving \\${abs(f['diff']):,.0f}/mo vs avg). Keep it up!"
-                    )
-            if not rising_forecasts and not falling_forecasts:
-                st.info("All categories forecast within normal range for next month.")
+                    text = result.get("response", str(result))
+                    return text  # Return raw — escaping happens at display time
+                except Exception as e:
+                    err = str(e)
+                    if "credit balance" in err.lower() or "billing" in err.lower():
+                        return "**API credits exhausted.** Please add credits at [console.anthropic.com/settings/billing](https://console.anthropic.com/settings/billing) to continue using the advisor."
+                    return f"**Error:** {err[:200]}. Please try again."
 
-            # ── SECTION 5: Savings Target Progress ───────────────────────
-            st.divider()
-            st.markdown("#### Savings Target Progress")
-            savings_target = int(database.get_setting(conn, "monthly_savings_target", "1000"))
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Monthly Target", f"${savings_target:,}/mo")
-            c2.metric("This Week", f"${week_total:,.0f}")
-            c3.metric("Transactions", len(week_txns))
+            if needs_response:
+                pending_msg = st.session_state.chat_history[-1]["content"]
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        text = _get_response(pending_msg)
+                    st.markdown(escape_dollars(text))
+                    st.session_state.chat_history.append({"role": "assistant", "content": text})
+                    database.save_conversation(conn, st.session_state.session_id, "assistant", text)
 
-            # ── SECTION 6: Claude's Analysis ──────────────────────────────
-            if advisor:
-                st.divider()
-                st.markdown("#### Claude's Take")
-                if st.button("Get Claude's Analysis", type="primary"):
-                    with st.spinner("Claude is analyzing your week..."):
-                        try:
-                            # Build a focused context for Claude
-                            analysis_context = {
-                                "week_total": week_total,
-                                "last_week_total": last_week_total,
-                                "wow_change": wow_change,
-                                "top_categories": sorted_cats[:5],
-                                "big_charges": [{"desc": t["description"], "amount": t["amount"],
-                                                "category": t["category"]} for t in big_charges[:5]],
-                                "rising_forecasts": rising_forecasts,
-                                "falling_forecasts": falling_forecasts,
-                                "gap": gap_info,
-                                "savings_target": int(database.get_setting(conn, "monthly_savings_target", "1000")),
-                            }
-
-                            stat_ctx = None
-                            try:
-                                stat_ctx = analytics.build_statistical_context(conn)
-                            except Exception:
-                                pass
-
-                            report_result = advisor.generate_weekly_report(
-                                week_transactions=[dict(t) for t in week_txns[:30]],
-                                monthly_context=data["mtd_summary"],
-                                objective_progress=data["objective_progress"],
-                                alerts=data["alerts"],
-                                statistical_context=stat_ctx,
-                            )
-
-                            # Display Claude's insights
-                            keep = report_result.get("keep", "")
-                            stop = report_result.get("stop", "")
-                            start = report_result.get("start", "")
-                            actions = report_result.get("action_items", [])
-                            concern = report_result.get("top_concern", "")
-                            win = report_result.get("top_win", "")
-
-                            if keep or stop or start:
-                                k_col, s_col, st_col = st.columns(3)
-                                with k_col:
-                                    st.success(f"**KEEP**\n\n{keep}")
-                                with s_col:
-                                    st.error(f"**STOP**\n\n{stop}")
-                                with st_col:
-                                    st.info(f"**START**\n\n{start}")
-
-                            if actions:
-                                st.markdown("**This Week's Action Items:**")
-                                for i, action in enumerate(actions[:3], 1):
-                                    st.markdown(f"{i}. {action}")
-
-                            if concern:
-                                st.warning(f"**Top concern:** {concern}")
-                            if win:
-                                st.success(f"**Top win:** {win}")
-
-                            # Save for future reference
-                            plain = report_result.get("plain_text", "")
-                            if plain:
-                                database.save_weekly_report(
-                                    conn, date.today().isoformat(),
-                                    report_result.get("subject", "Weekly Report"),
-                                    report_result.get("html_body", ""), plain,
-                                )
-                        except Exception as e:
-                            st.error(f"Claude analysis failed: {e}")
-
-            # ── Send to Telegram ──────────────────────────────────────────
-            st.divider()
-            bot_token = database.get_setting(conn, "telegram_bot_token")
-            chat_id = database.get_setting(conn, "telegram_chat_id")
-            if bot_token and chat_id:
-                if st.button("Send Report to Telegram"):
-                    with st.spinner("Generating report with forecasts..."):
-                        try:
-                            from telegram_bot import TelegramReporter, format_weekly_report_html
-                            import chart_generator
-
-                            # Build preventive actions with forecast data
-                            data["preventive_actions"] = []
-                            _active = category_engine.get_active_categories(conn)
-                            for cat_name in _active[:10]:
-                                try:
-                                    import analytics
-                                    pf = analytics.prophet_forecast_category(conn, cat_name, periods=1)
-                                    if pf and pf["forecast"]:
-                                        predicted = pf["forecast"][0]["predicted"]
-                                        avg = pf.get("historical_avg", 0)
-                                        if avg > 0:
-                                            diff = predicted - avg
-                                            data["preventive_actions"].append({
-                                                "category": cat_name, "predicted": predicted,
-                                                "avg": avg, "diff": diff,
-                                                "forecast": f"${predicted:,.0f} (avg ${avg:,.0f})",
-                                            })
-                                except Exception:
-                                    pass
-
-                            # Build red card data (categories over 115% of average)
-                            _current_month = date.today().strftime("%Y-%m")
-                            _mb = database.get_monthly_category_breakdown(conn, _current_month)
-                            _active_for_report = category_engine.get_active_categories(conn)
-                            _mb = [c for c in _mb if c["category"] in _active_for_report]
-
-                            red_cards = []
-                            for cd in _mb:
-                                cat = cd["category"]
-                                spent = abs(cd["total"])
-                                t = analytics_cache.get_cached_trend(conn, cat)
-                                if t:
-                                    avg = float(t.get("mean", 0))
-                                    if avg > 0 and spent > avg * 1.15:
-                                        red_cards.append({
-                                            "category": cat, "spent": spent, "avg": avg,
-                                            "pct_above": (spent / avg - 1) * 100,
-                                        })
-                            red_cards.sort(key=lambda x: -x["pct_above"])
-
-                            # Generate a chart image for each red card category
-                            charts = []
-                            for rc in red_cards[:3]:
-                                try:
-                                    cat = rc["category"]
-                                    history = database.get_category_monthly_history(conn, cat, months=12)
-                                    if len(history) >= 3:
-                                        import plotly.graph_objects as _go
-                                        hist_months = [h["month"] for h in reversed(history)]
-                                        hist_vals = [abs(h["total"]) for h in reversed(history)]
-
-                                        fig_rc = _go.Figure()
-                                        fig_rc.add_trace(_go.Scatter(
-                                            x=hist_months, y=hist_vals, mode="lines+markers",
-                                            line=dict(color="#ef4444", width=3),
-                                            marker=dict(size=8, color="#ef4444"),
-                                        ))
-                                        avg = rc["avg"]
-                                        fig_rc.add_hline(y=avg, line_dash="dot", line_color="#94a3b8",
-                                                        annotation_text=f"avg ${avg:,.0f}")
-                                        fig_rc.update_layout(
-                                            title=f"{cat}: ${rc['spent']:,.0f} (+{rc['pct_above']:.0f}% above avg)",
-                                            title_font=dict(size=16, color="#ef4444"),
-                                            margin=dict(t=50, b=30, l=50, r=30),
-                                            height=300, width=600,
-                                            yaxis=dict(tickformat="$,.0f"),
-                                            paper_bgcolor="white", plot_bgcolor="white",
-                                            font=dict(size=12),
-                                        )
-                                        import plotly.io as _pio
-                                        png = _pio.to_image(fig_rc, format="png", width=600, height=300, scale=2)
-                                        charts.append((png, f"{cat}: ${rc['spent']:,.0f}"))
-                                except Exception:
-                                    pass
-
-                            # Generate Claude report for Telegram
-                            _cached = analytics_cache.get_cached(conn)
-                            _tg_report = None
-                            try:
-                                _tg_advisor = get_advisor()
-                                if _tg_advisor:
-                                    _tg_report = _tg_advisor.generate_weekly_report(
-                                        week_transactions=data.get("week_transactions", []),
-                                        monthly_context=data.get("mtd_summary"),
-                                        objective_progress=data.get("objective_progress", {}),
-                                        alerts=data.get("alerts", []),
-                                    )
-                            except Exception:
-                                pass
-                            summary = (_tg_report.get("plain_text", "") if _tg_report else "") or format_weekly_report_html(data, cached_analytics=_cached, red_cards=red_cards)
-                            telegram = TelegramReporter(bot_token, chat_id)
-                            telegram.send_weekly_report(summary, charts)
-                            maggie_chat = database.get_setting(conn, "telegram_chat_id_maggie")
-                            if maggie_chat and maggie_chat != chat_id:
-                                TelegramReporter(bot_token, maggie_chat).send_weekly_report(summary, charts)
-                            st.success("Sent to Kero & Maggie!")
-                        except Exception as e:
-                            st.error(f"Failed: {e}")
-
-        # Past reports
-        past = database.get_weekly_reports(conn)
-        if past:
-            st.divider()
-            st.markdown("#### Past Reports")
-            for r in past:
-                with st.expander(f"{r['report_date']} — {r['subject'] or 'Weekly Report'}"):
-                    st.markdown(r["plain_text"] or "")
+            # Chat input
+            user_input = st.chat_input("Ask your advisor...")
+            if user_input:
+                st.session_state.chat_history.append({"role": "user", "content": user_input})
+                database.save_conversation(conn, st.session_state.session_id, "user", user_input)
+                with st.chat_message("user"):
+                    st.markdown(user_input)
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        text = _get_response(user_input)
+                    st.markdown(escape_dollars(text))
+                    st.session_state.chat_history.append({"role": "assistant", "content": text})
+                    database.save_conversation(conn, st.session_state.session_id, "assistant", text)
 
     conn.close()
-
-    with tab2:
-        st.markdown("#### Telegram Bot Setup")
-        st.markdown("""
-        1. Open Telegram, search **@BotFather**, send `/newbot`
-        2. Copy the **bot token**
-        3. Start a chat with your bot, send any message
-        4. Get your chat ID: `https://api.telegram.org/bot<TOKEN>/getUpdates`
-        """)
-
-        conn = get_conn()
-        token = st.text_input("Bot Token", value=database.get_setting(conn, "telegram_bot_token"), type="password")
-        chat = st.text_input("Chat ID", value=database.get_setting(conn, "telegram_chat_id"))
-
-        c1, c2 = st.columns(2)
-        if c1.button("Save"):
-            if token and chat:
-                database.set_setting(conn, "telegram_bot_token", token)
-                database.set_setting(conn, "telegram_chat_id", chat)
-                st.success("Saved!")
-        if c2.button("Test Connection"):
-            if token:
-                try:
-                    from telegram_bot import TelegramReporter
-                    bot = TelegramReporter(token, chat or "test")
-                    info = bot.test_connection()
-                    if info.get("ok"):
-                        st.success(f"Connected: @{info['result']['username']}")
-                        if chat:
-                            bot.send_message("Connected! Your Budget Tracker is ready.")
-                except Exception as e:
-                    st.error(f"Failed: {e}")
-        conn.close()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2731,6 +2208,362 @@ elif page == "Settings":
                     st.error(f"Failed: {e}")
         else:
             st.warning("Set your API key above first.")
+
+    st.divider()
+
+    # ── Weekly Reports & Telegram ─────────────────────────────────────
+    st.markdown("#### Weekly Reports & Telegram")
+
+    with st.expander("Weekly Report", expanded=False):
+        import analytics as _rpt_analytics
+        from collections import Counter as _rpt_Counter
+
+        _rpt_advisor = get_advisor()
+        data = reports.gather_report_data(conn)
+        week_total = abs(data["week_spending_total"])
+        week_txns = data["week_transactions"]
+
+        if not week_txns:
+            st.info("No transactions this week. Upload a statement to generate a report.")
+        else:
+            # ── HEADER: Savings target + week summary ──────────────────
+            header_col1, header_col2 = st.columns([2, 1])
+            with header_col1:
+                from calendar import month_name as _mname
+                today = date.today()
+                st.markdown(f"### Week of {data['week_start']} to {data['report_date']}")
+            with header_col2:
+                _rpt_savings_target = int(database.get_setting(conn, "monthly_savings_target", "1000"))
+                st.metric("Savings Target", f"${_rpt_savings_target:,}/mo")
+
+            # ── SECTION 1: Week at a Glance ───────────────────────────────
+            st.markdown("#### This Week at a Glance")
+
+            # Compare to last week
+            last_week_txns = database.get_transactions(
+                conn,
+                start_date=(date.today() - timedelta(days=14)).isoformat(),
+                end_date=(date.today() - timedelta(days=7)).isoformat(),
+            )
+            last_week_total = abs(sum(t["amount"] for t in last_week_txns if t["amount"] < 0))
+            wow_change = week_total - last_week_total if last_week_total > 0 else 0
+
+            _wc1, _wc2 = st.columns(2)
+            _wc1.metric("Total Spent", f"\\${week_total:,.0f}")
+            _wc2.metric("vs Last Week", f"\\${abs(wow_change):,.0f}",
+                      delta=f"{'↑' if wow_change > 0 else '↓'} \\${abs(wow_change):,.0f}",
+                      delta_color="inverse" if wow_change > 0 else "normal")
+            _wc3, _wc4 = st.columns(2)
+            _wc3.metric("Transactions", len(week_txns))
+            _wc4.metric("Avg per Txn", f"\\${week_total / max(len(week_txns), 1):,.0f}")
+
+            # ── SECTION 2: Top Categories This Week ───────────────────────
+            st.markdown("#### Spending Breakdown")
+            cat_totals = {}
+            cat_counts = _rpt_Counter()
+            for t in week_txns:
+                if t["amount"] < 0 and t["category"] in category_engine.get_active_categories(conn):
+                    cat = t["category"]
+                    cat_totals[cat] = cat_totals.get(cat, 0) + abs(t["amount"])
+                    cat_counts[cat] += 1
+            sorted_cats = sorted(cat_totals.items(), key=lambda x: -x[1])
+
+            if sorted_cats:
+                cats_list = [c[0] for c in sorted_cats[:10]]
+                vals_list = [c[1] for c in sorted_cats[:10]]
+                fig = go.Figure(go.Bar(
+                    x=vals_list, y=cats_list, orientation="h",
+                    marker_color=CATEGORY_PALETTE[:len(cats_list)],
+                    text=[f"${v:,.0f}" for v in vals_list],
+                    textposition="auto",
+                    hovertemplate="<b>%{y}</b><br>$%{x:,.0f}<extra></extra>",
+                ))
+                fig.update_layout(**CHART_LAYOUT, height=max(250, len(cats_list) * 35 + 80),
+                                 showlegend=False, yaxis=dict(autorange="reversed"),
+                                 xaxis=dict(title="Amount ($)", gridcolor="#f3f4f6", tickformat="$,.0f"))
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+            # ── SECTION 3: Big Charges ────────────────────────────────────
+            big_charges = [t for t in week_txns if t["amount"] < -150]
+            if big_charges:
+                st.markdown("#### Notable Charges (> \\$150)")
+                for t in sorted(big_charges, key=lambda x: x["amount"]):
+                    st.markdown(f"- **\\${abs(t['amount']):,.0f}** — {t['description']} ({t['category']}) on {t['date']}")
+
+            # ── SECTION 4: Prophet Forecasts — Preventive Actions ─────────
+            st.divider()
+            st.markdown("#### Next Month Preview — Preventive Actions")
+            st.caption("Prophet ML forecasts based on your spending history. Act now to prevent overspending.")
+
+            forecast_cats = sorted_cats[:8] if sorted_cats else []
+            rising_forecasts = []
+            falling_forecasts = []
+
+            for cat_name, cat_spent in forecast_cats:
+                try:
+                    pf = _rpt_analytics.prophet_forecast_category(conn, cat_name, periods=1)
+                    if not pf or not pf["forecast"]:
+                        continue
+                    predicted = pf["forecast"][0]["predicted"]
+                    avg = pf.get("historical_avg", 0)
+                    if avg <= 0:
+                        continue
+                    diff = predicted - avg
+                    pct_diff = (diff / avg) * 100
+                    entry = {"cat": cat_name, "predicted": predicted, "avg": avg,
+                             "diff": diff, "pct": pct_diff, "month": pf["forecast"][0]["month"]}
+                    if pct_diff > 10:
+                        rising_forecasts.append(entry)
+                    elif pct_diff < -10:
+                        falling_forecasts.append(entry)
+                except Exception:
+                    pass
+
+            if rising_forecasts:
+                for f in sorted(rising_forecasts, key=lambda x: -x["diff"]):
+                    st.error(
+                        f"**{f['cat']}** — Forecast: **\\${f['predicted']:,.0f}** for {f['month']} "
+                        f"(\\${f['diff']:+,.0f} vs avg \\${f['avg']:,.0f}). "
+                        f"**Cut back now** to prevent this from happening."
+                    )
+            if falling_forecasts:
+                for f in sorted(falling_forecasts, key=lambda x: x["diff"]):
+                    st.success(
+                        f"**{f['cat']}** — Trending down to **\\${f['predicted']:,.0f}** "
+                        f"(saving \\${abs(f['diff']):,.0f}/mo vs avg). Keep it up!"
+                    )
+            if not rising_forecasts and not falling_forecasts:
+                st.info("All categories forecast within normal range for next month.")
+
+            # ── SECTION 5: Savings Target Progress ───────────────────────
+            st.divider()
+            st.markdown("#### Savings Target Progress")
+            _rpt_savings_target = int(database.get_setting(conn, "monthly_savings_target", "1000"))
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Monthly Target", f"${_rpt_savings_target:,}/mo")
+            c2.metric("This Week", f"${week_total:,.0f}")
+            c3.metric("Transactions", len(week_txns))
+
+            # ── SECTION 6: Claude's Analysis ──────────────────────────────
+            if _rpt_advisor:
+                st.divider()
+                st.markdown("#### Claude's Take")
+                if st.button("Get Claude's Analysis", type="primary"):
+                    with st.spinner("Claude is analyzing your week..."):
+                        try:
+                            # Build a focused context for Claude
+                            analysis_context = {
+                                "week_total": week_total,
+                                "last_week_total": last_week_total,
+                                "wow_change": wow_change,
+                                "top_categories": sorted_cats[:5],
+                                "big_charges": [{"desc": t["description"], "amount": t["amount"],
+                                                "category": t["category"]} for t in big_charges[:5]],
+                                "rising_forecasts": rising_forecasts,
+                                "falling_forecasts": falling_forecasts,
+                                "savings_target": int(database.get_setting(conn, "monthly_savings_target", "1000")),
+                            }
+
+                            stat_ctx = None
+                            try:
+                                stat_ctx = _rpt_analytics.build_statistical_context(conn)
+                            except Exception:
+                                pass
+
+                            report_result = _rpt_advisor.generate_weekly_report(
+                                week_transactions=[dict(t) for t in week_txns[:30]],
+                                monthly_context=data["mtd_summary"],
+                                objective_progress=data["objective_progress"],
+                                alerts=data["alerts"],
+                                statistical_context=stat_ctx,
+                            )
+
+                            # Display Claude's insights
+                            keep = report_result.get("keep", "")
+                            stop = report_result.get("stop", "")
+                            start = report_result.get("start", "")
+                            actions = report_result.get("action_items", [])
+                            concern = report_result.get("top_concern", "")
+                            win = report_result.get("top_win", "")
+
+                            if keep or stop or start:
+                                k_col, s_col, st_col = st.columns(3)
+                                with k_col:
+                                    st.success(f"**KEEP**\n\n{keep}")
+                                with s_col:
+                                    st.error(f"**STOP**\n\n{stop}")
+                                with st_col:
+                                    st.info(f"**START**\n\n{start}")
+
+                            if actions:
+                                st.markdown("**This Week's Action Items:**")
+                                for i, action in enumerate(actions[:3], 1):
+                                    st.markdown(f"{i}. {action}")
+
+                            if concern:
+                                st.warning(f"**Top concern:** {concern}")
+                            if win:
+                                st.success(f"**Top win:** {win}")
+
+                            # Save for future reference
+                            plain = report_result.get("plain_text", "")
+                            if plain:
+                                database.save_weekly_report(
+                                    conn, date.today().isoformat(),
+                                    report_result.get("subject", "Weekly Report"),
+                                    report_result.get("html_body", ""), plain,
+                                )
+                        except Exception as e:
+                            st.error(f"Claude analysis failed: {e}")
+
+            # ── Send to Telegram ──────────────────────────────────────────
+            st.divider()
+            bot_token = database.get_setting(conn, "telegram_bot_token")
+            chat_id = database.get_setting(conn, "telegram_chat_id")
+            if bot_token and chat_id:
+                if st.button("Send Report to Telegram"):
+                    with st.spinner("Generating report with forecasts..."):
+                        try:
+                            from telegram_bot import TelegramReporter, format_weekly_report_html
+                            import chart_generator
+
+                            # Build preventive actions with forecast data
+                            data["preventive_actions"] = []
+                            _active = category_engine.get_active_categories(conn)
+                            for cat_name in _active[:10]:
+                                try:
+                                    pf = _rpt_analytics.prophet_forecast_category(conn, cat_name, periods=1)
+                                    if pf and pf["forecast"]:
+                                        predicted = pf["forecast"][0]["predicted"]
+                                        avg = pf.get("historical_avg", 0)
+                                        if avg > 0:
+                                            diff = predicted - avg
+                                            data["preventive_actions"].append({
+                                                "category": cat_name, "predicted": predicted,
+                                                "avg": avg, "diff": diff,
+                                                "forecast": f"${predicted:,.0f} (avg ${avg:,.0f})",
+                                            })
+                                except Exception:
+                                    pass
+
+                            # Build red card data (categories over 115% of average)
+                            _current_month = date.today().strftime("%Y-%m")
+                            _mb = database.get_monthly_category_breakdown(conn, _current_month)
+                            _active_for_report = category_engine.get_active_categories(conn)
+                            _mb = [c for c in _mb if c["category"] in _active_for_report]
+
+                            red_cards = []
+                            for cd in _mb:
+                                cat = cd["category"]
+                                spent = abs(cd["total"])
+                                t = analytics_cache.get_cached_trend(conn, cat)
+                                if t:
+                                    avg = float(t.get("mean", 0))
+                                    if avg > 0 and spent > avg * 1.15:
+                                        red_cards.append({
+                                            "category": cat, "spent": spent, "avg": avg,
+                                            "pct_above": (spent / avg - 1) * 100,
+                                        })
+                            red_cards.sort(key=lambda x: -x["pct_above"])
+
+                            # Generate a chart image for each red card category
+                            charts = []
+                            for rc in red_cards[:3]:
+                                try:
+                                    cat = rc["category"]
+                                    history = database.get_category_monthly_history(conn, cat, months=12)
+                                    if len(history) >= 3:
+                                        import plotly.graph_objects as _go
+                                        hist_months = [h["month"] for h in reversed(history)]
+                                        hist_vals = [abs(h["total"]) for h in reversed(history)]
+
+                                        fig_rc = _go.Figure()
+                                        fig_rc.add_trace(_go.Scatter(
+                                            x=hist_months, y=hist_vals, mode="lines+markers",
+                                            line=dict(color="#ef4444", width=3),
+                                            marker=dict(size=8, color="#ef4444"),
+                                        ))
+                                        avg = rc["avg"]
+                                        fig_rc.add_hline(y=avg, line_dash="dot", line_color="#94a3b8",
+                                                        annotation_text=f"avg ${avg:,.0f}")
+                                        fig_rc.update_layout(
+                                            title=f"{cat}: ${rc['spent']:,.0f} (+{rc['pct_above']:.0f}% above avg)",
+                                            title_font=dict(size=16, color="#ef4444"),
+                                            margin=dict(t=50, b=30, l=50, r=30),
+                                            height=300, width=600,
+                                            yaxis=dict(tickformat="$,.0f"),
+                                            paper_bgcolor="white", plot_bgcolor="white",
+                                            font=dict(size=12),
+                                        )
+                                        import plotly.io as _pio
+                                        png = _pio.to_image(fig_rc, format="png", width=600, height=300, scale=2)
+                                        charts.append((png, f"{cat}: ${rc['spent']:,.0f}"))
+                                except Exception:
+                                    pass
+
+                            # Generate Claude report for Telegram
+                            _cached = analytics_cache.get_cached(conn)
+                            _tg_report = None
+                            try:
+                                _tg_advisor = get_advisor()
+                                if _tg_advisor:
+                                    _tg_report = _tg_advisor.generate_weekly_report(
+                                        week_transactions=data.get("week_transactions", []),
+                                        monthly_context=data.get("mtd_summary"),
+                                        objective_progress=data.get("objective_progress", {}),
+                                        alerts=data.get("alerts", []),
+                                    )
+                            except Exception:
+                                pass
+                            summary = (_tg_report.get("plain_text", "") if _tg_report else "") or format_weekly_report_html(data, cached_analytics=_cached, red_cards=red_cards)
+                            telegram = TelegramReporter(bot_token, chat_id)
+                            telegram.send_weekly_report(summary, charts)
+                            maggie_chat = database.get_setting(conn, "telegram_chat_id_maggie")
+                            if maggie_chat and maggie_chat != chat_id:
+                                TelegramReporter(bot_token, maggie_chat).send_weekly_report(summary, charts)
+                            st.success("Sent to Kero & Maggie!")
+                        except Exception as e:
+                            st.error(f"Failed: {e}")
+
+        # Past reports
+        past = database.get_weekly_reports(conn)
+        if past:
+            st.divider()
+            st.markdown("#### Past Reports")
+            for r in past:
+                with st.expander(f"{r['report_date']} — {r['subject'] or 'Weekly Report'}"):
+                    st.markdown(r["plain_text"] or "")
+
+    # ── Telegram Setup ────────────────────────────────────────────────
+    st.markdown("##### Telegram Bot Setup")
+    st.markdown("""
+    1. Open Telegram, search **@BotFather**, send `/newbot`
+    2. Copy the **bot token**
+    3. Start a chat with your bot, send any message
+    4. Get your chat ID: `https://api.telegram.org/bot<TOKEN>/getUpdates`
+    """)
+
+    token = st.text_input("Bot Token", value=database.get_setting(conn, "telegram_bot_token"), type="password")
+    chat = st.text_input("Chat ID", value=database.get_setting(conn, "telegram_chat_id"))
+
+    c1, c2 = st.columns(2)
+    if c1.button("Save", key="save_telegram"):
+        if token and chat:
+            database.set_setting(conn, "telegram_bot_token", token)
+            database.set_setting(conn, "telegram_chat_id", chat)
+            st.success("Saved!")
+    if c2.button("Test Connection", key="test_telegram"):
+        if token:
+            try:
+                from telegram_bot import TelegramReporter
+                bot = TelegramReporter(token, chat or "test")
+                info = bot.test_connection()
+                if info.get("ok"):
+                    st.success(f"Connected: @{info['result']['username']}")
+                    if chat:
+                        bot.send_message("Connected! Your Budget Tracker is ready.")
+            except Exception as e:
+                st.error(f"Failed: {e}")
 
     st.divider()
 

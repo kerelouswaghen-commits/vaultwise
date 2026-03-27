@@ -9,20 +9,9 @@ def build_advisor_prompt(financial_context: dict, tactical_context: dict = None,
 
     today = date.today()
 
-    # Phase based on daycare status
-    if today < config.DAYCARE_OVERLAP_START:
-        phase = "SINGLE DAYCARE — Geo only"
-    elif today <= config.DAYCARE_OVERLAP_END:
-        phase = "DUAL DAYCARE — Both kids enrolled"
-    elif today < config.PERLA_KINDERGARTEN:
-        phase = "SINGLE DAYCARE — Perla only"
-    else:
-        phase = "DAYCARE-FREE — Wealth building phase"
-
     return f"""You are the personal financial advisor for Kero and Maggie Waghen. You have been working with this family for over a year and you know their finances inside and out.
 
 TODAY'S DATE: {today.isoformat()}
-CURRENT PHASE: {phase}
 
 ─────────────────────────────────────────────
 WHO YOU ARE
@@ -61,23 +50,17 @@ SAVINGS TARGET
 ─────────────────────────────────────────────
 Monthly savings target: ${savings_target:,}/mo
 
-Daycare context:
-- Current daycare costs vary by phase (see CURRENT PHASE above)
-- Peak combined daycare: ${config.PEAK_DAYCARE_MONTHLY:,}/month when both kids are enrolled
-- Geo starts kindergarten at LWSD (FREE) — Sep 2028
-- Perla starts kindergarten — Sep 2031, daycare costs drop to $0
-
 Every dollar saved above the target builds a stronger financial cushion for the family.
 
 ─────────────────────────────────────────────
 MONTHLY EXPENSE BREAKDOWN
 ─────────────────────────────────────────────
-Total non-daycare monthly expenses: ${config.NON_DAYCARE_MONTHLY:,}
+Total monthly expenses: ${config.MONTHLY_EXPENSES:,}
 
 FIXED (from checking account — ${_checking_subtotal():,}/mo):
 {_format_fixed_expenses()}
 
-DISCRETIONARY (from credit cards — ${config.CC_MONTHLY_AVERAGE_EXCL_DAYCARE:,}/mo average):
+DISCRETIONARY (from credit cards — ${config.CC_MONTHLY_AVERAGE:,}/mo average):
 - Groceries (Safeway, HMart, Fred Meyer, QFC, Trader Joe's): varies
 - Costco: ~$1,100/mo (THIS IS THE #1 TARGET FOR CUTS — they overspend here regularly)
 - Dining Out: ~$642/mo
@@ -210,20 +193,18 @@ def build_quick_analysis_prompt() -> str:
     return f"""You are the Waghen family's financial advisor reviewing a newly uploaded bank statement.
 
 CONTEXT YOU KNOW:
-- This family has ~${config.NON_DAYCARE_MONTHLY:,}/mo in non-daycare expenses
+- This family has ~${config.MONTHLY_EXPENSES:,}/mo in monthly expenses
 - Their #1 discretionary spend is Costco (~$1,100/mo)
 - They have a monthly savings target and are focused on building financial reserves
 - Key merchants to watch: Costco, Amazon (~$890/mo), dining out (~$642/mo), clothing (~$467/mo)
-- Daycare provider: Kiddie Academy of Kirkland
 - Church giving: ~$1,500/mo via Zelle + small Square donations
 
 PROVIDE A QUICK ANALYSIS (5-7 bullet points):
 1. TOTAL SPEND this statement period vs. their monthly average. Is it higher or lower? By how much?
 2. TOP 3 CATEGORIES by dollar amount — are any significantly above their averages?
 3. COSTCO specifically — how many trips, total spend, and any notably large single trips?
-4. UNUSUAL TRANSACTIONS — anything over $500 that's not daycare/mortgage? New merchants? Unexpected charges?
-5. DAYCARE — was it paid this month? At what rate? Does the rate match the expected schedule?
-6. POSITIVE SIGNALS — any categories where spending was notably BELOW average?
+4. UNUSUAL TRANSACTIONS — anything over $500 that's not mortgage? New merchants? Unexpected charges?
+5. POSITIVE SIGNALS — any categories where spending was notably BELOW average?
 7. ONE-LINE VERDICT — "Good month" / "Watch out" / "Needs attention" with the single most important number.
 
 Be specific with dollar amounts. Compare to their known averages. Keep it concise — this is a quick scan, not a deep dive."""
@@ -274,7 +255,7 @@ RESPOND WITH STRICT JSON ONLY (no markdown):
 }}
 
 RULES:
-- Only suggest cutting DISCRETIONARY spending (not daycare, not fixed bills)
+- Only suggest cutting DISCRETIONARY spending (not fixed bills)
 - Reference ACTUAL merchants and ACTUAL amounts from the transactions
 - Be realistic — don't suggest returning groceries already eaten
 - Rank by largest dollar recovery first"""

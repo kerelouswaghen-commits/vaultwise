@@ -18,6 +18,7 @@ FAMILY = {
     ],
     "address": "123 Main St, City ST 00000",
 }
+FAMILY_DISPLAY_NAME = "Your Family"
 
 ACCOUNTS = {
     "bank_1234": {"type": "credit", "label": "Card ...1234", "owner": "Person1", "last4": "1234"},
@@ -48,32 +49,14 @@ INCOME = {
     "combined_monthly_take_home": 13_167,
 }
 
-DAYCARE_PROVIDER = "Daycare Name"
-DAYCARE_ADDRESS = "456 School Rd, City ST 00000"
-DAYCARE_PHONE = "555-555-5555"
-
-GEO_DAYCARE = [
-    {"period": ("2026-01-01", "2026-12-31"), "program": "Preschool", "monthly": 2_500},
-]
-GEO_KINDERGARTEN = date(2028, 9, 1)
-
-PERLA_DAYCARE = [
-    {"period": ("2027-01-01", "2027-12-31"), "program": "Toddler", "monthly": 3_000},
-]
-PERLA_KINDERGARTEN = date(2031, 9, 1)
-
-DAYCARE_OVERLAP_START = date(2027, 8, 1)
-DAYCARE_OVERLAP_END = date(2028, 8, 31)
-PEAK_DAYCARE_MONTHLY = 5_500
-
 FIXED_MONTHLY_EXPENSES = {
     "Mortgage": 2_000,
     "Utilities": 200,
     "Car Payment": 400,
     "Insurance": 200,
 }
-NON_DAYCARE_MONTHLY = 10_000
-CC_MONTHLY_AVERAGE_EXCL_DAYCARE = 3_000
+MONTHLY_EXPENSES = 10_000
+CC_MONTHLY_AVERAGE = 3_000
 
 OBJECTIVES = [
     {

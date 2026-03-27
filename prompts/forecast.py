@@ -14,30 +14,10 @@ TODAY'S DATE: {today.isoformat()}
 MONTHLY SAVINGS TARGET: ${savings_target:,}/mo
 
 ─────────────────────────────────────────────
-THE FAMILY'S FINANCIAL TIMELINE
+FINANCIAL OVERVIEW
 ─────────────────────────────────────────────
-
-PHASE 1 — SINGLE DAYCARE (Geo only):
-  - Daycare cost: ${"{:,}".format(2596)}-${"{:,}".format(3120)}/mo depending on program
-  - Combined take-home: ~${config.INCOME['combined_monthly_take_home']:,}/mo
-  - Non-daycare expenses: ~${config.NON_DAYCARE_MONTHLY:,}/mo
-  - Available for savings + daycare: ~${config.INCOME['combined_monthly_take_home'] - config.NON_DAYCARE_MONTHLY:,}/mo
-
-PHASE 2 — DUAL DAYCARE (both kids enrolled):
-  - BOTH kids in daycare simultaneously
-  - Peak combined daycare: ${config.PEAK_DAYCARE_MONTHLY:,}/mo
-  - Monthly expenses may exceed income during this phase
-  - (Exact figures are in the SYSTEM-COMPUTED NUMERICAL PROJECTION below — use those, not hardcoded values)
-
-PHASE 3 — SINGLE DAYCARE (Perla only, after Geo starts kindergarten):
-  - Geo starts kindergarten (FREE at LWSD)
-  - Single daycare (Perla only): ${"{:,}".format(2677)}-${"{:,}".format(3375)}/mo
-  - Savings accumulation resumes
-  - Income grows (annual raises for both)
-
-PHASE 4 — DAYCARE-FREE (after Perla starts kindergarten):
-  - All daycare costs drop to $0
-  - Wealth building phase begins
+- Combined take-home: ~${config.INCOME['combined_monthly_take_home']:,}/mo
+- Monthly expenses: ~${config.MONTHLY_EXPENSES:,}/mo
 
 ─────────────────────────────────────────────
 INCOME GROWTH MODEL
@@ -46,12 +26,6 @@ INCOME GROWTH MODEL
 - Maggie: $4,000 raise every January (next raise increases monthly net by ~$167)
 - Kero bonus: ~$18,000 after tax, paid March (one-time boost)
 - Maggie bonus: ~$5,000 after tax, paid January (one-time boost)
-
-─────────────────────────────────────────────
-DAYCARE RATE SCHEDULE (4% annual increase each January)
-─────────────────────────────────────────────
-Geo: {json.dumps(config.GEO_DAYCARE, indent=2)}
-Perla: {json.dumps(config.PERLA_DAYCARE, indent=2)}
 
 ─────────────────────────────────────────────
 SAVINGS LEVERS AVAILABLE
@@ -77,13 +51,11 @@ YOUR ANALYSIS TASK
 
 1. NARRATIVE: Write a 2-3 paragraph plain-English summary that a non-financial person can understand. Cover:
    - Where the family stands TODAY relative to their savings target
-   - What the projection shows about the overlap period
-   - Whether their current spending trajectory closes or widens the gap
+   - Whether their current spending trajectory supports or undermines their savings goal
    - The single most important thing they should focus on right now
 
 2. RISK FACTORS: Identify 3-5 specific risks with likelihood, dollar impact, and mitigation. Think about:
    - Spending creep (are recent months trending higher than historical average?)
-   - Daycare rate increases above the assumed 4%
    - Job change / income disruption for either Kero or Maggie
    - Large one-time expenses (car repair, medical, home repair)
    - Inflation impact on groceries and household costs

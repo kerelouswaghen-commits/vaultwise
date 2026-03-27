@@ -75,10 +75,8 @@ class CashFlowForecast:
     base_df: pd.DataFrame
     ci_low: list            # 10th percentile cumulative
     ci_high: list           # 90th percentile cumulative
-    p_shortfall: float      # probability of entering overlap with deficit
-    expected_surplus: float # expected savings at overlap start
-    gap_amount: float       # dynamic gap (negative = surplus)
-    monthly_savings_needed: float  # to close gap
+    p_negative: float       # probability of negative cumulative at 12 months
+    expected_surplus: float # expected savings at 12 months
 
 
 # ---------------------------------------------------------------------------
@@ -996,10 +994,8 @@ def simulate_cash_flow(conn, n_simulations: int = 500,
             base_df=base_df,
             ci_low=[c * 0.85 for c in base_df["cumulative"].tolist()],
             ci_high=[c * 1.15 for c in base_df["cumulative"].tolist()],
-            p_shortfall=0.5,
-            expected_surplus=base_df[base_df["month"] == "2027-07"]["cumulative"].iloc[0] if len(base_df[base_df["month"] == "2027-07"]) > 0 else 0,
-            gap_amount=0,
-            monthly_savings_needed=0,
+            p_negative=0.5,
+            expected_surplus=base_df["cumulative"].iloc[min(11, len(base_df) - 1)] if len(base_df) > 0 else 0,
         )
 
     # Try to get Prophet-based variance estimate for better simulation
@@ -1029,8 +1025,8 @@ def simulate_cash_flow(conn, n_simulations: int = 500,
         for i in range(n):
             base_net = base_df.iloc[i]["monthly_net"]
             # Add random noise proportional to historical variance
-            # Noise is scaled to the non-daycare expense component
-            noise = np.random.normal(0, base_df.iloc[i]["non_dc_expenses"] * cv * 0.3)
+            # Noise is scaled to the expense component
+            noise = np.random.normal(0, base_df.iloc[i]["monthly_expenses"] * cv * 0.3)
             monthly_net = base_net + noise
             cumulative += monthly_net
             cumulative_paths[sim, i] = cumulative
@@ -1040,40 +1036,18 @@ def simulate_cash_flow(conn, n_simulations: int = 500,
     ci_high = np.percentile(cumulative_paths, 90, axis=0).tolist()
     ci_median = np.percentile(cumulative_paths, 50, axis=0).tolist()
 
-    # Find overlap start index
-    overlap_idx = None
-    for i, row in base_df.iterrows():
-        if row["month"] == "2027-07":
-            overlap_idx = i
-            break
-
-    if overlap_idx is not None:
-        # Probability of shortfall at overlap start
-        overlap_values = cumulative_paths[:, overlap_idx]
-        p_shortfall = float(np.mean(overlap_values < 0))
-        expected_surplus = float(np.median(overlap_values))
-
-        # Dynamic gap calculation
-        overlap_df = base_df[base_df["phase"] == "OVERLAP"]
-        total_overlap_deficit = abs(overlap_df[overlap_df["monthly_net"] < 0]["monthly_net"].sum())
-        gap = total_overlap_deficit - expected_surplus if expected_surplus < total_overlap_deficit else 0
-
-        months_until_overlap = overlap_idx
-        monthly_needed = gap / max(months_until_overlap, 1) if gap > 0 else 0
-    else:
-        p_shortfall = 0.0
-        expected_surplus = 0.0
-        gap = 0.0
-        monthly_needed = 0.0
+    # Check 12-month outlook
+    check_idx = min(11, n - 1)
+    check_values = cumulative_paths[:, check_idx]
+    p_negative = float(np.mean(check_values < 0))
+    expected_surplus = float(np.median(check_values))
 
     return CashFlowForecast(
         base_df=base_df,
         ci_low=ci_low,
         ci_high=ci_high,
-        p_shortfall=round(p_shortfall, 3),
+        p_negative=round(p_negative, 3),
         expected_surplus=round(expected_surplus, 2),
-        gap_amount=round(gap, 2),
-        monthly_savings_needed=round(monthly_needed, 2),
     )
 
 
@@ -1109,10 +1083,8 @@ def build_statistical_context(conn) -> dict:
     try:
         forecast = simulate_cash_flow(conn, n_simulations=300)
         forecast_summary = {
-            "probability_of_shortfall": forecast.p_shortfall,
-            "expected_surplus_at_overlap": forecast.expected_surplus,
-            "dynamic_gap": forecast.gap_amount,
-            "monthly_savings_to_close_gap": forecast.monthly_savings_needed,
+            "probability_of_negative": forecast.p_negative,
+            "expected_surplus_12mo": forecast.expected_surplus,
         }
     except Exception:
         forecast_summary = {"note": "Insufficient data for Monte Carlo simulation"}

@@ -54,11 +54,6 @@ from config_private import *  # noqa: F401, F403
 _CHECKING_SUBTOTAL = sum(FIXED_MONTHLY_EXPENSES.values())  # noqa: F405
 
 # ---------------------------------------------------------------------------
-# Daycare rate increase (generic, no personal info)
-# ---------------------------------------------------------------------------
-ANNUAL_RATE_INCREASE = 0.04  # 4 %
-
-# ---------------------------------------------------------------------------
 # Expense categories for Claude to use
 # ---------------------------------------------------------------------------
 CATEGORIES = [

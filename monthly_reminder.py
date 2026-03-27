@@ -49,24 +49,24 @@ KERO_REMINDERS = [
     (
         "Hey Kero! Your Chase 4730 statement for {month} should be ready. "
         "Open the Chase app → Statements → Download PDF → Share to me here. "
-        "Takes 30 seconds. {overlap_msg}"
+        "Takes 30 seconds. {motivation_msg}"
     ),
     # Day 6-8: Nudge
     (
         "Kero, still waiting on your {month} Chase 4730 statement. "
         "Can't track your spending without it! "
-        "Quick reminder: Chase app → Statements → Share PDF here. {overlap_msg}"
+        "Quick reminder: Chase app → Statements → Share PDF here. {motivation_msg}"
     ),
     # Day 9-12: Firm
     (
         "Kero! It's been {days} days since {month} ended and I still don't have your Chase 4730 data. "
         "Your spending dashboard is getting stale. "
-        "Please upload today — Geo and Perla's daycare fund depends on accurate tracking. {overlap_msg}"
+        "Please upload today — accurate tracking is key to hitting your savings target. {motivation_msg}"
     ),
     # Day 13+: Escalation
     (
         "Kero, {days} days without your {month} statement. "
-        "I can't give you accurate savings advice or overlap projections without current data. "
+        "I can't give you accurate savings advice without current data. "
         "This is a 30-second task: Chase app → Statements → Share PDF to me. Please do it now."
     ),
 ]
@@ -76,7 +76,7 @@ MAGGIE_REMINDERS = [
     (
         "Hey Maggie! Your Chase 3072 statement for {month} should be ready. "
         "Open the Chase app → Statements → Download PDF → Share to me here. "
-        "Super quick! {overlap_msg}"
+        "Super quick!"
     ),
     # Day 6-8: Nudge
     (
@@ -185,7 +185,7 @@ def send_reminders():
         return
 
     bot = TelegramReporter(bot_token, kero_chat)  # Default to Kero
-    overlap_msg = get_motivation_message()
+    motivation_msg = get_motivation_message()
     level = get_reminder_level(day)
 
     # Check each person
@@ -199,7 +199,7 @@ def send_reminders():
 
     # Send reminders
     if not kero_done and kero_chat:
-        msg = KERO_REMINDERS[level].format(month=month_label, days=days_since, overlap_msg=overlap_msg)
+        msg = KERO_REMINDERS[level].format(month=month_label, days=days_since, motivation_msg=motivation_msg)
         bot_kero = TelegramReporter(bot_token, kero_chat)
         bot_kero.send_message(msg)
         print(f"  → Sent reminder to Kero (level {level})")
@@ -214,7 +214,7 @@ def send_reminders():
         pass  # Don't spam congrats every reminder day
 
     if not maggie_done and maggie_chat:
-        msg = MAGGIE_REMINDERS[level].format(month=month_label, days=days_since, overlap_msg=overlap_msg)
+        msg = MAGGIE_REMINDERS[level].format(month=month_label, days=days_since, motivation_msg=motivation_msg)
         bot_maggie = TelegramReporter(bot_token, maggie_chat)
         bot_maggie.send_message(msg)
         print(f"  → Sent reminder to Maggie (level {level})")
@@ -238,7 +238,7 @@ def send_test():
         print("No bot token configured.")
         return
 
-    overlap_msg = get_motivation_message()
+    motivation_msg = get_motivation_message()
 
     if kero_chat:
         bot = TelegramReporter(bot_token, kero_chat)
@@ -246,7 +246,7 @@ def send_test():
             f"Hey Kero! This is a test reminder from Vaultwise AI.\n\n"
             f"Every month I'll remind you to upload your Chase 4730 statement. "
             f"Just share the PDF from the Chase app to this chat.\n\n"
-            f"{overlap_msg}"
+            f"{motivation_msg}"
         )
         print(f"✅ Test sent to Kero ({kero_chat})")
 
@@ -256,7 +256,7 @@ def send_test():
             f"Hey Maggie! This is a test reminder from Vaultwise AI.\n\n"
             f"Every month I'll remind you to upload your Chase 3072 statement. "
             f"Just share the PDF from the Chase app to this chat.\n\n"
-            f"{overlap_msg}"
+            f"{motivation_msg}"
         )
         print(f"✅ Test sent to Maggie ({maggie_chat})")
     else:

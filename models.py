@@ -51,7 +51,6 @@ class MonthlySnapshot:
     total_expenses: float
     by_category: dict = field(default_factory=dict)
     net: float = 0.0
-    daycare_cost: float = 0.0
     savings_rate: float = 0.0
 
 
@@ -64,52 +63,6 @@ class Objective:
     deadline: Optional[date]
     current_amount: float = 0.0
     priority: int = 99
-
-
-# ---------------------------------------------------------------------------
-# Daycare cost lookup
-# ---------------------------------------------------------------------------
-
-def get_daycare_cost_for_month(year: int, month: int) -> dict:
-    """Return daycare cost breakdown for a given month."""
-    d = date(year, month, 1)
-    geo_cost = 0.0
-    perla_cost = 0.0
-    geo_program = None
-    perla_program = None
-
-    for entry in config.GEO_DAYCARE:
-        start = date.fromisoformat(entry["period"][0])
-        end = date.fromisoformat(entry["period"][1])
-        if start <= d <= end:
-            geo_cost = entry["monthly"]
-            geo_program = entry["program"]
-            break
-
-    if d >= config.GEO_KINDERGARTEN:
-        geo_cost = 0.0
-        geo_program = "Kindergarten"
-
-    for entry in config.PERLA_DAYCARE:
-        start = date.fromisoformat(entry["period"][0])
-        end = date.fromisoformat(entry["period"][1])
-        if start <= d <= end:
-            perla_cost = entry["monthly"]
-            perla_program = entry["program"]
-            break
-
-    if d >= config.PERLA_KINDERGARTEN:
-        perla_cost = 0.0
-        perla_program = "Kindergarten"
-
-    return {
-        "geo_cost": geo_cost,
-        "geo_program": geo_program,
-        "perla_cost": perla_cost,
-        "perla_program": perla_program,
-        "total_daycare": geo_cost + perla_cost,
-        "is_overlap": geo_cost > 0 and perla_cost > 0,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -163,11 +116,11 @@ def project_cash_flow(
 ) -> pd.DataFrame:
     """
     Project month-by-month cash flow from start through months_ahead.
-    Uses known daycare schedule and income growth from config.
+    Uses income growth model from config.
     """
     rows = []
     cumulative = 0.0
-    non_dc_expenses = monthly_expense_override or config.NON_DAYCARE_MONTHLY
+    monthly_expenses = monthly_expense_override or config.MONTHLY_EXPENSES
 
     # Apply savings adjustments if provided
     adjustment = 0.0
@@ -177,45 +130,26 @@ def project_cash_flow(
     year, month = start_year, start_month
     for i in range(months_ahead):
         income_info = get_income_for_month(year, month)
-        daycare_info = get_daycare_cost_for_month(year, month)
 
         total_income = income_info["total_income"]
-        total_expenses = non_dc_expenses + daycare_info["total_daycare"] - adjustment
+        total_expenses = monthly_expenses - adjustment
 
         monthly_net = total_income - total_expenses
         cumulative += monthly_net
-
-        # Determine phase
-        d = date(year, month, 1)
-        if d < config.DAYCARE_OVERLAP_START:
-            phase = "Geo only"
-        elif d <= config.DAYCARE_OVERLAP_END:
-            phase = "OVERLAP"
-        elif d < config.PERLA_KINDERGARTEN:
-            phase = "Perla only"
-        else:
-            phase = "No daycare"
 
         rows.append({
             "month": f"{year:04d}-{month:02d}",
             "year": year,
             "month_num": month,
-            "phase": phase,
             "kero_net": income_info["kero_net"],
             "maggie_net": income_info["maggie_net"],
             "kero_bonus": income_info["kero_bonus"],
             "maggie_bonus": income_info["maggie_bonus"],
             "total_income": total_income,
-            "non_dc_expenses": non_dc_expenses - adjustment,
-            "geo_daycare": daycare_info["geo_cost"],
-            "geo_program": daycare_info["geo_program"],
-            "perla_daycare": daycare_info["perla_cost"],
-            "perla_program": daycare_info["perla_program"],
-            "total_daycare": daycare_info["total_daycare"],
+            "monthly_expenses": monthly_expenses - adjustment,
             "total_expenses": total_expenses,
             "monthly_net": monthly_net,
             "cumulative": cumulative,
-            "is_overlap": daycare_info["is_overlap"],
         })
 
         # Advance month
@@ -236,24 +170,17 @@ def scenario_model(
     adjustments can include:
       - Category expense changes: {"Dining Out": -200}
       - Income changes: {"income_change": 5000}  (annual, spread monthly)
-      - Daycare rate changes: {"daycare_rate_change": 0.05}  (5% increase)
     """
     df = base_df.copy()
 
     # Expense adjustments (negative = savings)
-    expense_adj = sum(v for k, v in adjustments.items() if k not in ("income_change", "daycare_rate_change"))
+    expense_adj = sum(v for k, v in adjustments.items() if k != "income_change")
     income_adj = adjustments.get("income_change", 0) / 12
-    daycare_pct = adjustments.get("daycare_rate_change", 0)
 
-    df["non_dc_expenses"] = df["non_dc_expenses"] + expense_adj
+    df["monthly_expenses"] = df["monthly_expenses"] + expense_adj
     df["total_income"] = df["total_income"] + income_adj
 
-    if daycare_pct:
-        df["geo_daycare"] = (df["geo_daycare"] * (1 + daycare_pct)).round(0)
-        df["perla_daycare"] = (df["perla_daycare"] * (1 + daycare_pct)).round(0)
-        df["total_daycare"] = df["geo_daycare"] + df["perla_daycare"]
-
-    df["total_expenses"] = df["non_dc_expenses"] + df["total_daycare"]
+    df["total_expenses"] = df["monthly_expenses"]
     df["monthly_net"] = df["total_income"] - df["total_expenses"]
     df["cumulative"] = df["monthly_net"].cumsum()
 
@@ -293,53 +220,6 @@ def detect_anomalies(monthly_summaries: list[dict], threshold_std: float = 2.0) 
             })
 
     return sorted(anomalies, key=lambda x: x["z_score"], reverse=True)
-
-
-# ---------------------------------------------------------------------------
-# Dynamic gap computation (replaces hardcoded $1,775)
-# ---------------------------------------------------------------------------
-
-def compute_overlap_gap() -> dict:
-    """
-    Dynamically compute the savings gap before the daycare overlap.
-    Returns gap amount, pre-overlap savings, overlap deficit, and monthly savings needed.
-    """
-    df = project_cash_flow()
-    today = date.today()
-
-    # Pre-overlap savings (cumulative at Jul 2027)
-    pre_overlap = df[df["month"] == "2027-07"]
-    pre_overlap_savings = pre_overlap.iloc[0]["cumulative"] if len(pre_overlap) > 0 else 0
-
-    # Overlap period deficit
-    overlap_df = df[df["phase"] == "OVERLAP"]
-    overlap_deficit = abs(overlap_df[overlap_df["monthly_net"] < 0]["monthly_net"].sum())
-
-    # The gap
-    gap = overlap_deficit - pre_overlap_savings if pre_overlap_savings < overlap_deficit else 0
-
-    # Months remaining
-    months_to_overlap = max(1, (config.DAYCARE_OVERLAP_START - today).days / 30.44)
-    monthly_needed = gap / months_to_overlap if gap > 0 else 0
-
-    # Lowest cumulative point
-    lowest = df["cumulative"].min()
-    lowest_month = df.loc[df["cumulative"].idxmin(), "month"]
-
-    # Final surplus (Aug 2031)
-    aug31 = df[df["month"] == "2031-08"]
-    final_surplus = aug31.iloc[0]["cumulative"] if len(aug31) > 0 else 0
-
-    return {
-        "pre_overlap_savings": round(pre_overlap_savings, 2),
-        "overlap_deficit": round(overlap_deficit, 2),
-        "gap": round(gap, 2),
-        "monthly_savings_needed": round(monthly_needed, 2),
-        "months_to_overlap": round(months_to_overlap, 1),
-        "lowest_point": round(lowest, 2),
-        "lowest_month": lowest_month,
-        "final_surplus": round(final_surplus, 2),
-    }
 
 
 def compute_savings_status(conn, target_monthly: int = 1000) -> dict:
