@@ -44,6 +44,9 @@ def inject_css():
         line-height: 1.5;
     }
 
+    /* Bottom padding for sticky chat_input */
+    .main .block-container { padding-bottom: 70px !important; }
+
     /* Category cards — thicker severity stripes */
     .cat-card { border-radius: 12px; padding: 16px; margin-bottom: 8px; border-left: 6px solid; }
     .cat-card-critical { border-left-color: #ef4444; background: #fef2f2; }

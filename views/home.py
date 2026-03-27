@@ -471,13 +471,6 @@ def home_page():
             with st.chat_message("assistant"):
                 st.warning("Set your Anthropic API key in Settings to use the chat.")
 
-    # Chat input — use form so Enter key submits and layout stays inline
-    with st.form("chat_form", clear_on_submit=True):
-        dash_question = st.text_input("Ask about spending or savings...", label_visibility="collapsed", placeholder="Ask about spending or savings...")
-        if st.form_submit_button("Send", use_container_width=True) and dash_question:
-            st.session_state.dashboard_chat_history.append({"role": "user", "content": dash_question})
-            st.rerun()
-
     # ── 7. CATEGORY CARDS (severity sorted, collapsed) ────────────────
     st.divider()
 
@@ -590,6 +583,10 @@ def home_page():
             with cols[i % 2]:
                 render_category_card(cat_data, td, conn, claude_actions, selected_month, expanded_default=False)
 
-    # Donut chart REMOVED (duplicated bar chart)
+    # ── STICKY CHAT INPUT (always at bottom of screen) ──────────────
+    dash_question = st.chat_input("Ask about spending or savings...")
+    if dash_question:
+        st.session_state.dashboard_chat_history.append({"role": "user", "content": dash_question})
+        st.rerun()
 
     conn.close()
