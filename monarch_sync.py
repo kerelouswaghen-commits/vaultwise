@@ -603,14 +603,26 @@ def sync_transactions(conn, force_full: bool = False) -> dict:
         result["errors"].append(f"API fetch error: {str(e)[:100]}")
         return result
 
-    # Transform and insert
+    # Transform and deduplicate against existing DB transactions
     vw_transactions = []
     for txn in all_transactions:
         transformed = _transform_transaction(txn, acct_mapping, cat_mapping)
-        if transformed:
-            vw_transactions.append(transformed)
-        else:
+        if not transformed:
             result["skipped"] += 1
+            continue
+
+        # Smart dedup: skip if a transaction with same (date, amount, account_id)
+        # already exists from any source (PDF/CSV or prior Monarch sync).
+        # This prevents duplicates even when raw_description differs between sources.
+        existing = conn.execute(
+            "SELECT id FROM transactions WHERE date = ? AND ABS(amount - ?) < 0.01 AND account_id = ? LIMIT 1",
+            (transformed["date"], transformed["amount"], transformed["account_id"]),
+        ).fetchone()
+        if existing:
+            result["skipped"] += 1
+            continue
+
+        vw_transactions.append(transformed)
 
     if vw_transactions:
         inserted = database.bulk_insert_transactions(conn, vw_transactions)

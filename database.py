@@ -632,6 +632,30 @@ def get_objective_history(conn, objective_id: str) -> list:
     ).fetchall()
 
 
+def delete_monarch_duplicates(conn) -> int:
+    """Remove Monarch-synced transactions that duplicate an existing PDF/CSV transaction.
+    Match criteria: same date + same amount (within $0.01).
+    Keeps the PDF/CSV version (higher confidence, established categories).
+    Returns count of deleted rows.
+    """
+    dupes = conn.execute("""
+        SELECT DISTINCT t1.id
+        FROM transactions t1
+        JOIN transactions t2
+            ON t1.date = t2.date
+            AND ABS(t1.amount - t2.amount) < 0.01
+            AND t1.id != t2.id
+        WHERE t1.notes = 'monarch_sync'
+            AND (t2.notes != 'monarch_sync' OR t2.notes IS NULL)
+    """).fetchall()
+    ids = [d["id"] for d in dupes]
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM transactions WHERE id IN ({placeholders})", ids)
+        conn.commit()
+    return len(ids)
+
+
 # ── Alerts ────────────────────────────────────────────────────────────────
 
 def insert_alert(conn, alert_type: str, severity: str, title: str, body: str = "") -> int:

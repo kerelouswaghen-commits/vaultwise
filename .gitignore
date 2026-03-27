@@ -29,6 +29,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Private config (personal/financial data)
+config_private.py
+
 # Sensitive tokens
 monarchRecoveryTokens.txt
 
