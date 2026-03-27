@@ -28,7 +28,7 @@ from claude_advisor import ClaudeAdvisor
 # ═══════════════════════════════════════════════════════════════════════════
 # CONFIG & INIT
 # ═══════════════════════════════════════════════════════════════════════════
-st.set_page_config(page_title="VaultWise", page_icon="💰", initial_sidebar_state="expanded")
+st.set_page_config(page_title="VaultWise", page_icon="💰", initial_sidebar_state="auto")
 
 # PWA support — makes the app feel native on iPhone/Android
 st.components.v1.html("""
