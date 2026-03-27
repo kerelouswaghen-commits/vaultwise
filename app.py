@@ -115,23 +115,16 @@ st.markdown("""<style>
     }
     [data-testid="stHorizontalBlock"] { flex-wrap: wrap; gap: 4px; }
 
-    /* Top nav pill bar — always inline */
-    div[data-testid="stRadio"][aria-label="nav"] > div {
-        flex-wrap: nowrap !important; gap: 4px !important;
-        background: #f8f9fb; border: 1px solid #e2e6ed;
-        border-radius: 14px; padding: 5px;
+    /* Top nav pill bar — never wrap */
+    .nav-bar [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 4px !important; }
+    .nav-bar button {
+        font-size: clamp(0.6rem, 2.3vw, 0.78rem) !important;
+        padding: 8px 2px !important; border-radius: 10px !important;
+        white-space: nowrap; min-height: 42px;
     }
-    div[data-testid="stRadio"][aria-label="nav"] label {
-        font-size: clamp(0.65rem, 2.5vw, 0.82rem) !important;
-        padding: 8px 6px !important; border-radius: 10px !important;
-        text-align: center; white-space: nowrap; min-height: 40px;
-        display: flex; align-items: center; justify-content: center;
-    }
-    div[data-testid="stRadio"][aria-label="nav"] label[data-checked="true"] {
-        background: #0066FF !important; color: white !important;
+    .nav-bar button[kind="primary"] {
         box-shadow: 0 2px 8px rgba(0,102,255,0.25);
     }
-    div[data-testid="stRadio"][aria-label="nav"] label > div:first-child { display: none; }
 
     /* Gauge responsive helpers */
     .gauge-header, .gauge-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; }
@@ -281,34 +274,31 @@ with st.sidebar:
 
     if "active_page" not in st.session_state:
         st.session_state.active_page = "Dashboard"
-    page = st.radio("Navigate", [
-        "Dashboard",
-        "Transactions",
-        "Insights & Advisor",
-        "Settings",
-    ], index=["Dashboard", "Transactions", "Insights & Advisor", "Settings"].index(st.session_state.active_page),
-       label_visibility="collapsed", key="nav_sidebar")
-    if page != st.session_state.active_page:
-        st.session_state.active_page = page
-        st.rerun()
 
-# ── Top navigation bar ───────────────────────────────────────────────
-_page_list = ["📊 Dashboard", "📋 Transactions", "🔮 Insights", "⚙️ Settings"]
-_page_map = {"📊 Dashboard": "Dashboard", "📋 Transactions": "Transactions",
-             "🔮 Insights": "Insights & Advisor", "⚙️ Settings": "Settings"}
-_page_reverse = {v: k for k, v in _page_map.items()}
+# ── Top navigation bar (buttons with on_click) ──────────────────────
+def _set_page(p):
+    st.session_state.active_page = p
 
-_top_nav = st.radio(
-    "nav", _page_list,
-    index=_page_list.index(_page_reverse[st.session_state.active_page]),
-    horizontal=True,
-    label_visibility="collapsed",
-    key="nav_top",
-)
-_selected = _page_map[_top_nav]
-if _selected != st.session_state.active_page:
-    st.session_state.active_page = _selected
-    st.rerun()
+_nav_items = [("📊", "Dashboard"), ("📋", "Transactions"), ("🔮", "Insights"), ("⚙️", "Settings")]
+_nav_full = {"Insights": "Insights & Advisor"}  # short → full name
+
+with st.container():
+    st.markdown('<div class="nav-bar">', unsafe_allow_html=True)
+    _ncols = st.columns([1, 1, 1, 1, 0.3])
+    for i, (icon, label) in enumerate(_nav_items):
+        full = _nav_full.get(label, label)
+        is_active = st.session_state.active_page == full
+        _ncols[i].button(
+            f"{icon} {label}", key=f"nav_{i}",
+            type="primary" if is_active else "secondary",
+            use_container_width=True,
+            on_click=_set_page, args=(full,),
+        )
+    # Refresh button
+    _ncols[4].button("🔄", key="nav_refresh", use_container_width=True,
+                     help="Refresh app")
+    st.markdown('</div>', unsafe_allow_html=True)
+
 page = st.session_state.active_page
 
 # ═══════════════════════════════════════════════════════════════════════════
