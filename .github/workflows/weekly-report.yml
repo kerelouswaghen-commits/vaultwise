@@ -2,8 +2,8 @@ name: Weekly Financial Report
 
 on:
   schedule:
-    # Every Sunday at 2 PM UTC (6 AM PST / 9 AM EST)
-    - cron: '0 14 * * 0'
+    # Every Tuesday at 7 PM UTC (11 AM PST)
+    - cron: '0 19 * * 2'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -20,29 +20,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.13
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install kaleido
+
+      - name: Write config_private.py
+        run: |
+          echo "$CONFIG_PRIVATE_PY" > config_private.py
+        env:
+          CONFIG_PRIVATE_PY: ${{ secrets.CONFIG_PRIVATE_PY }}
 
       - name: Generate and send weekly report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          REPORT_RECIPIENTS: ${{ secrets.REPORT_RECIPIENTS }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             python send_weekly_report.py --dry-run
           else
-            python send_weekly_report.py
+            python send_weekly_report.py --telegram-only
           fi
