@@ -111,10 +111,10 @@ with st.sidebar:
 # TOP NAVIGATION BAR — always visible, mobile-friendly
 # ═══════════════════════════════════════════════════════════════════════════
 if "active_page" not in st.session_state:
-    st.session_state.active_page = "📊 Home"
+    st.session_state.active_page = "📊Home"
 
-_nav_options = ["📊 Home", "📋 Txns", "🔮 Insights", "⚙️ Settings"]
-_nav_to_page = {"📊 Home": "Home", "📋 Txns": "Transactions", "🔮 Insights": "Savings Journey", "⚙️ Settings": "Settings"}
+_nav_options = ["📊Home", "📋Txns", "🔮Plan", "⚙️Setup"]
+_nav_to_page = {"📊Home": "Home", "📋Txns": "Transactions", "🔮Plan": "Savings Journey", "⚙️Setup": "Settings"}
 
 _selected_nav = st.segmented_control(
     "nav", _nav_options,
