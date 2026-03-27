@@ -120,7 +120,10 @@ def project_cash_flow(
     """
     rows = []
     cumulative = 0.0
-    monthly_expenses = monthly_expense_override or config.MONTHLY_EXPENSES
+    # Compute dynamically from current fixed expenses + credit card average
+    monthly_expenses = monthly_expense_override or (
+        sum(config.FIXED_MONTHLY_EXPENSES.values()) + getattr(config, 'CC_MONTHLY_AVERAGE', 5894)
+    )
 
     # Apply savings adjustments if provided
     adjustment = 0.0

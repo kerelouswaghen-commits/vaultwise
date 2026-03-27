@@ -644,6 +644,16 @@ if page == "Dashboard":
 
             st.markdown("")
             st.markdown("**🏠 Fixed Monthly Bills**")
+            # Known grouped expenses
+            _known_keys = {
+                "Mortgage (Mr. Cooper 6.49%)", "Auto Loan (Chase #2102)", "Car Insurance (CCS Country)",
+                "Student Loan 1", "Student Loan 2", "Church (Zelle)", "Family Support (Nermeen)",
+                "Church (CC small donations)", "PSE Electric & Gas", "Water/Sewer (NUD)",
+                "Internet (Comcast/Xfinity)", "Garbage & Recycling", "T-Mobile", "Mint Mobile (normalized)",
+                "Gas (fuel)", "Auto Maintenance (normalized)", "Renters Insurance (AGI)",
+                "Digital Subscriptions", "Affirm", "CC Interest (card 3072)",
+                "Home Improvement (normalized)", "Travel (normalized)",
+            }
             _fixed_groups = {
                 "Mortgage": config.FIXED_MONTHLY_EXPENSES.get("Mortgage (Mr. Cooper 6.49%)", 0),
                 "Car (loan + insurance)": config.FIXED_MONTHLY_EXPENSES.get("Auto Loan (Chase #2102)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Car Insurance (CCS Country)", 0),
@@ -653,6 +663,11 @@ if page == "Dashboard":
                 "Phone (T-Mobile + Mint)": config.FIXED_MONTHLY_EXPENSES.get("T-Mobile", 0) + config.FIXED_MONTHLY_EXPENSES.get("Mint Mobile (normalized)", 0),
                 "Other fixed": config.FIXED_MONTHLY_EXPENSES.get("Gas (fuel)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Auto Maintenance (normalized)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Renters Insurance (AGI)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Digital Subscriptions", 0) + config.FIXED_MONTHLY_EXPENSES.get("Affirm", 0) + config.FIXED_MONTHLY_EXPENSES.get("CC Interest (card 3072)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Home Improvement (normalized)", 0) + config.FIXED_MONTHLY_EXPENSES.get("Travel (normalized)", 0),
             }
+            # Auto-include any custom expenses not in the known groups
+            for _k, _v in config.FIXED_MONTHLY_EXPENSES.items():
+                if _k not in _known_keys and _v > 0:
+                    _short_name = _k.split("(")[0].strip()
+                    _fixed_groups[_short_name] = _v
             _bills_html = '<table style="width:100%;font-size:0.85rem;border-collapse:collapse;">'
             for label, amt in _fixed_groups.items():
                 _bills_html += f'<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:3px 0;color:#6b7280;">{label}</td><td style="text-align:right;">{_D}{amt:,.0f}</td></tr>'
@@ -2195,6 +2210,7 @@ elif page == "Settings":
     # ── Fixed Monthly Expenses ────────────────────────────────────────
     st.markdown("#### Fixed Monthly Expenses")
     _exp_changes = {}
+    _exp_to_remove = []
     _exp_cols = st.columns(2)
     _items = list(config.FIXED_MONTHLY_EXPENSES.items())
     _half = (len(_items) + 1) // 2
@@ -2203,19 +2219,49 @@ elif page == "Settings":
             _slice = _items[col_idx * _half:(col_idx + 1) * _half]
             for _label, _amt in _slice:
                 _short = _label.split("(")[0].strip()[:30]
-                _new_val = st.number_input(_short, value=_amt, step=10, key=f"fixed_{_label}")
+                _inp_col, _del_col = st.columns([4, 1])
+                _new_val = _inp_col.number_input(_short, value=_amt, step=10, key=f"fixed_{_label}")
+                if _del_col.button("✕", key=f"del_{_label}", help=f"Remove {_short}"):
+                    _exp_to_remove.append(_label)
                 if _new_val != _amt:
                     _exp_changes[_label] = _new_val
 
-    _new_fixed_total = sum(_exp_changes.get(k, v) for k, v in config.FIXED_MONTHLY_EXPENSES.items())
-    st.caption(f"**Total fixed: ${_new_fixed_total:,}/mo**")
+    _new_fixed_total = sum(_exp_changes.get(k, v) for k, v in config.FIXED_MONTHLY_EXPENSES.items()
+                           if k not in _exp_to_remove)
+    st.caption(f"**Total fixed: ${_new_fixed_total:,}/mo** (+ ~${getattr(config, 'CC_MONTHLY_AVERAGE', 5894):,} credit card avg)")
 
-    if _exp_changes and st.button("Save Expense Changes", key="save_expenses"):
+    _has_changes = bool(_exp_changes) or bool(_exp_to_remove)
+    if _has_changes and st.button("Save Expense Changes", key="save_expenses"):
+        for _label in _exp_to_remove:
+            config.FIXED_MONTHLY_EXPENSES.pop(_label, None)
         for _label, _val in _exp_changes.items():
-            config.FIXED_MONTHLY_EXPENSES[_label] = _val
+            if _label not in _exp_to_remove:
+                config.FIXED_MONTHLY_EXPENSES[_label] = _val
         import json as _json
         database.set_setting(conn, "fixed_expenses_config", _json.dumps(config.FIXED_MONTHLY_EXPENSES))
+        _new_fixed_total = sum(config.FIXED_MONTHLY_EXPENSES.values())
         st.success(f"Expenses updated! Total fixed: ${_new_fixed_total:,}/mo")
+        st.rerun()
+
+    # Handle remove immediately
+    if _exp_to_remove and not _has_changes:
+        for _label in _exp_to_remove:
+            config.FIXED_MONTHLY_EXPENSES.pop(_label, None)
+        import json as _json
+        database.set_setting(conn, "fixed_expenses_config", _json.dumps(config.FIXED_MONTHLY_EXPENSES))
+        st.rerun()
+
+    # ── Add New Expense ─────────────────────────────────────────────
+    with st.expander("Add New Expense", expanded=False):
+        _add_c1, _add_c2 = st.columns([3, 1])
+        _new_exp_name = _add_c1.text_input("Expense name", placeholder="e.g. Gym Membership", key="new_exp_name")
+        _new_exp_amt = _add_c2.number_input("$/mo", value=0, step=10, min_value=0, key="new_exp_amt")
+        if st.button("Add Expense", key="add_expense") and _new_exp_name and _new_exp_amt > 0:
+            config.FIXED_MONTHLY_EXPENSES[_new_exp_name] = _new_exp_amt
+            import json as _json
+            database.set_setting(conn, "fixed_expenses_config", _json.dumps(config.FIXED_MONTHLY_EXPENSES))
+            st.success(f"Added {_new_exp_name}: ${_new_exp_amt:,}/mo")
+            st.rerun()
 
     st.divider()
 
