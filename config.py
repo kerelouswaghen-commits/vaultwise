@@ -26,7 +26,25 @@ if not os.path.exists(_private_path):
             with open(_private_path, "w") as f:
                 f.write(_content)
     except Exception:
-        pass
+        # Try writing to /tmp if main dir is read-only
+        import sys
+        _private_path = "/tmp/config_private.py"
+        try:
+            import streamlit as st
+            _content = st.secrets.get("config_private_py", "")
+            if _content:
+                with open(_private_path, "w") as f:
+                    f.write(_content)
+                # Add /tmp to Python path so import works
+                if "/tmp" not in sys.path:
+                    sys.path.insert(0, "/tmp")
+        except Exception as e:
+            raise RuntimeError(f"Cannot load config_private.py: {e}")
+
+# If config_private.py is in /tmp, make sure it's importable
+import sys
+if "/tmp" in _private_path and "/tmp" not in sys.path:
+    sys.path.insert(0, "/tmp")
 
 from config_private import *  # noqa: F401, F403
 
