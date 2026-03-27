@@ -217,7 +217,7 @@ def normalize_transactions(transactions: list, year_hint: str = "") -> list:
 # ═══════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### 💰 Family Budget")
-    st.caption(config.FAMILY_DISPLAY_NAME)
+    st.caption(getattr(config, "FAMILY_DISPLAY_NAME", "Family Budget"))
 
     conn = get_conn()
     api_key = os.environ.get("ANTHROPIC_API_KEY", "") or database.get_setting(conn, "anthropic_api_key")
