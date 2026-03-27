@@ -43,13 +43,14 @@ def main():
 
     db_path = os.path.join(os.path.dirname(__file__), "data", config.DB_FILENAME)
 
-    # Check database exists
-    if not os.path.exists(db_path):
+    # Check database exists (skip check if using Turso cloud DB)
+    if not database._USE_TURSO and not os.path.exists(db_path):
         print("❌ No database found. Upload some statements first via the Streamlit app.")
         sys.exit(1)
 
     # Initialize
-    database.init_db(db_path)
+    if not database._USE_TURSO:
+        database.init_db(db_path)
     conn = database.get_connection(db_path)
 
     txn_count = database.get_transaction_count(conn)
