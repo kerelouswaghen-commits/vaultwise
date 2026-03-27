@@ -281,22 +281,25 @@ def compute_savings_status(conn, target_monthly: int = 1000) -> dict:
 
 def compute_savings_streak(conn, target_monthly: int = 1000) -> int:
     """Count consecutive months meeting the savings target, going backward from current."""
-    import database
-    today = date.today()
-    rows = conn.execute("""
-        SELECT strftime('%Y-%m', date) as month,
-               SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as income,
-               SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) as expenses
-        FROM transactions
-        GROUP BY month
-        ORDER BY month DESC
-    """).fetchall()
+    try:
+        rows = conn.execute("""
+            SELECT strftime('%Y-%m', date) as month,
+                   SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as income,
+                   SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) as expenses
+            FROM transactions
+            GROUP BY month
+            ORDER BY month DESC
+        """).fetchall()
 
-    streak = 0
-    for r in rows:
-        net = (r["income"] or 0) + (r["expenses"] or 0)
-        if net >= target_monthly:
-            streak += 1
-        else:
-            break
-    return streak
+        streak = 0
+        for r in rows:
+            income = r["income"] if r["income"] else 0
+            expenses = r["expenses"] if r["expenses"] else 0
+            net = income + expenses
+            if net >= target_monthly:
+                streak += 1
+            else:
+                break
+        return streak
+    except Exception:
+        return 0

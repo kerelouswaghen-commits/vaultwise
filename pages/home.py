@@ -149,7 +149,10 @@ def home_page():
         kpi2.metric("Month Status", "Complete" if (date.today().year, date.today().month) != (_sel_year, _sel_month) else "Today")
 
     # Savings Streak
-    _streak = models.compute_savings_streak(conn, savings_target)
+    try:
+        _streak = models.compute_savings_streak(conn, savings_target)
+    except Exception:
+        _streak = 0
     kpi3.metric("Savings Streak", f"{_streak} mo" if _streak > 0 else "0",
                 delta="consecutive months on target" if _streak > 0 else "Build your streak!",
                 delta_color="off")

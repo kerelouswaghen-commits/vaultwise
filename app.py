@@ -20,7 +20,7 @@ from shared.components import render_savings_gauge
 # ═══════════════════════════════════════════════════════════════════════════
 # CONFIG & INIT
 # ═══════════════════════════════════════════════════════════════════════════
-st.set_page_config(page_title="VaultWise", page_icon="💰", initial_sidebar_state="auto")
+st.set_page_config(page_title="VaultWise", page_icon="💰", initial_sidebar_state="collapsed")
 
 # PWA support
 st.components.v1.html("""
@@ -45,15 +45,13 @@ monarch_auto_sync()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# SIDEBAR — persistent savings widget + status metrics
+# SIDEBAR — minimal: just API key + savings widget
 # ═══════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("### 💰 VaultWise")
-    st.caption(getattr(config, "FAMILY_DISPLAY_NAME", "Family Budget"))
-
     conn = get_conn()
     api_key = os.environ.get("ANTHROPIC_API_KEY", "") or database.get_setting(conn, "anthropic_api_key")
     if not api_key:
+        st.markdown("### Setup")
         api_key_input = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant-...")
         if api_key_input:
             database.set_setting(conn, "anthropic_api_key", api_key_input)
@@ -62,18 +60,10 @@ with st.sidebar:
             conn.close()
             st.rerun()
 
-    st.divider()
-
-    # Status metrics
-    txn_count = database.get_transaction_count(conn)
-    stmts = database.get_all_statements(conn)
-    c1, c2 = st.columns(2)
-    c1.metric("Statements", len(stmts))
-    c2.metric("Transactions", f"{txn_count:,}")
-
     savings_target = int(database.get_setting(conn, "monthly_savings_target", "2000"))
+    txn_count = database.get_transaction_count(conn)
 
-    # Compact savings widget in sidebar
+    # Compact savings widget
     if txn_count > 0:
         from datetime import date
         from calendar import month_name as _mn
@@ -81,55 +71,82 @@ with st.sidebar:
         month_display = f"{_mn[today.month]} {today.year}"
         current_month = today.strftime("%Y-%m")
 
-        _income_data = models.get_income_for_month(today.year, today.month)
-        _monthly_income = _income_data["total_income"] if isinstance(_income_data, dict) else _income_data
-        # Exclude bonuses for conservative estimate
-        _kero_bonus = _income_data.get("kero_bonus", 0) if isinstance(_income_data, dict) else 0
-        _maggie_bonus = _income_data.get("maggie_bonus", 0) if isinstance(_income_data, dict) else 0
-        _monthly_income -= (_kero_bonus + _maggie_bonus)
+        try:
+            _income_data = models.get_income_for_month(today.year, today.month)
+            _monthly_income = _income_data["total_income"] if isinstance(_income_data, dict) else _income_data
+            _kero_bonus = _income_data.get("kero_bonus", 0) if isinstance(_income_data, dict) else 0
+            _maggie_bonus = _income_data.get("maggie_bonus", 0) if isinstance(_income_data, dict) else 0
+            _monthly_income -= (_kero_bonus + _maggie_bonus)
 
-        _fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
+            _fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
 
-        import category_engine
-        _raw_breakdown = database.get_monthly_category_breakdown(conn, current_month)
-        _active_cats = category_engine.get_active_categories(conn)
-        _mb = [c for c in _raw_breakdown if c["category"] in _active_cats]
-        _total_spent = sum(abs(c["total"]) for c in _mb)
+            import category_engine
+            _raw_breakdown = database.get_monthly_category_breakdown(conn, current_month)
+            _active_cats = category_engine.get_active_categories(conn)
+            _mb = [c for c in _raw_breakdown if c["category"] in _active_cats]
+            _total_spent = sum(abs(c["total"]) for c in _mb)
 
-        _fixed_cats = {"Housing & Utilities", "Debt Payments", "Giving & Church", "Family Support",
-                       "Transportation", "Childcare & Education", "Phone & Internet", "Car Insurance"}
-        _txn_fixed = sum(abs(c["total"]) for c in _mb if c["category"] in _fixed_cats)
-        _txn_disc = _total_spent - _txn_fixed
-        _eff_fixed = max(_fixed_costs, _txn_fixed)
-        _total_outflow = _eff_fixed + _txn_disc
-        _saved = _monthly_income - _total_outflow
+            _fixed_cats = {"Housing & Utilities", "Debt Payments", "Giving & Church", "Family Support",
+                           "Transportation", "Childcare & Education", "Phone & Internet", "Car Insurance"}
+            _txn_fixed = sum(abs(c["total"]) for c in _mb if c["category"] in _fixed_cats)
+            _txn_disc = _total_spent - _txn_fixed
+            _eff_fixed = max(_fixed_costs, _txn_fixed)
+            _total_outflow = _eff_fixed + _txn_disc
+            _saved = _monthly_income - _total_outflow
 
-        render_savings_gauge(
-            month_display=month_display, saved=_saved, gauge_color="",
-            status_icon="", status_text="",
-            total_outflow=_total_outflow, budget_limit=_monthly_income - savings_target,
-            savings_target=savings_target, effective_fixed=_eff_fixed,
-            txn_discretionary=_txn_disc, spent_pct=0,
-            compact=True,
-        )
-    else:
-        st.metric("Savings Target", f"${savings_target:,}/mo")
-
+            render_savings_gauge(
+                month_display=month_display, saved=_saved, gauge_color="",
+                status_icon="", status_text="",
+                total_outflow=_total_outflow, budget_limit=_monthly_income - savings_target,
+                savings_target=savings_target, effective_fixed=_eff_fixed,
+                txn_discretionary=_txn_disc, spent_pct=0,
+                compact=True,
+            )
+        except Exception:
+            st.metric("Savings Target", f"${savings_target:,}/mo")
     conn.close()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# NAVIGATION — st.navigation with st.Page
+# TOP NAVIGATION BAR — always visible, mobile-friendly
+# ═══════════════════════════════════════════════════════════════════════════
+if "active_page" not in st.session_state:
+    st.session_state.active_page = "Home"
+
+
+def _set_page(p):
+    st.session_state.active_page = p
+
+
+_nav_items = [("📊", "Home"), ("📋", "Transactions"), ("🎯", "Savings Journey"), ("⚙️", "Settings")]
+
+st.markdown('<div class="nav-bar">', unsafe_allow_html=True)
+_ncols = st.columns(len(_nav_items))
+for i, (icon, label) in enumerate(_nav_items):
+    is_active = st.session_state.active_page == label
+    _ncols[i].button(
+        f"{icon} {label}", key=f"nav_{i}",
+        type="primary" if is_active else "secondary",
+        use_container_width=True,
+        on_click=_set_page, args=(label,),
+    )
+st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PAGE ROUTING
 # ═══════════════════════════════════════════════════════════════════════════
 from pages.home import home_page
 from pages.transactions import transactions_page
 from pages.savings_journey import savings_journey_page
 from pages.settings import settings_page
 
-pg = st.navigation([
-    st.Page(home_page, title="Home", icon=":material/home:", default=True),
-    st.Page(transactions_page, title="Transactions", icon=":material/receipt_long:"),
-    st.Page(savings_journey_page, title="Savings Journey", icon=":material/savings:"),
-    st.Page(settings_page, title="Settings", icon=":material/settings:"),
-])
-pg.run()
+page = st.session_state.active_page
+if page == "Home":
+    home_page()
+elif page == "Transactions":
+    transactions_page()
+elif page == "Savings Journey":
+    savings_journey_page()
+elif page == "Settings":
+    settings_page()

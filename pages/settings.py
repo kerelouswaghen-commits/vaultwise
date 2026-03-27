@@ -635,131 +635,136 @@ def settings_page():
 
     # ── 8. Monarch Money ──────────────────────────────────────────────
     st.markdown("#### Monarch Money")
-    import monarch_sync
+    try:
+        import monarch_sync
+    except ImportError:
+        st.info("Monarch Money integration requires `curl_cffi`. Install it locally to use this feature.")
+        monarch_sync = None
 
-    _mm_enabled = database.get_setting(conn, "monarch_enabled", "0") == "1"
-    _mm_stats = monarch_sync.get_sync_stats(conn)
+    _mm_enabled = False
+    if monarch_sync:
+        _mm_enabled = database.get_setting(conn, "monarch_enabled", "0") == "1"
+        _mm_stats = monarch_sync.get_sync_stats(conn)
 
-    if _mm_enabled and _mm_stats["last_sync"]:
-        _sync_ago = ""
-        try:
-            _sync_dt = datetime.fromisoformat(_mm_stats["last_sync"])
-            _sync_delta = datetime.now() - _sync_dt
-            if _sync_delta.days > 0:
-                _sync_ago = f"{_sync_delta.days}d ago"
-            elif _sync_delta.seconds >= 3600:
-                _sync_ago = f"{_sync_delta.seconds // 3600}h ago"
-            else:
-                _sync_ago = f"{_sync_delta.seconds // 60}m ago"
-        except (ValueError, TypeError):
-            _sync_ago = "unknown"
-        st.success(f"Connected — {_mm_stats['transaction_count']:,} transactions synced (last: {_sync_ago})")
-    elif _mm_enabled:
-        st.info("Connected — no sync yet. Click **Sync Now** below.")
-    else:
-        st.info("Connect your Monarch Money account to auto-import transactions.")
+        if _mm_enabled and _mm_stats["last_sync"]:
+            try:
+                _sync_dt = datetime.fromisoformat(_mm_stats["last_sync"])
+                _sync_delta = datetime.now() - _sync_dt
+                if _sync_delta.days > 0:
+                    _sync_ago = f"{_sync_delta.days}d ago"
+                elif _sync_delta.seconds >= 3600:
+                    _sync_ago = f"{_sync_delta.seconds // 3600}h ago"
+                else:
+                    _sync_ago = f"{_sync_delta.seconds // 60}m ago"
+            except (ValueError, TypeError):
+                _sync_ago = "unknown"
+            st.success(f"Connected — {_mm_stats['transaction_count']:,} transactions synced (last: {_sync_ago})")
+        elif _mm_enabled:
+            st.info("Connected — no sync yet. Click **Sync Now** below.")
+        else:
+            st.info("Connect your Monarch Money account to auto-import transactions.")
 
-    with st.expander("Credentials", expanded=not _mm_enabled):
-        _mm_email = database.get_setting(conn, "monarch_email", "")
-        _mm_password = database.get_setting(conn, "monarch_password", "")
-        _new_email = st.text_input("Monarch Email", value=_mm_email, key="mm_email")
-        _new_password = st.text_input("Monarch Password", type="password",
-                                       value=_mm_password if _mm_password else "",
-                                       key="mm_password")
-        _mm_device_uuid = database.get_setting(conn, "monarch_device_uuid", "")
-        _new_device_uuid = st.text_input(
-            "Device UUID", value=_mm_device_uuid, key="mm_device_uuid",
-            help="Required: Open Monarch in browser → DevTools Console → run: localStorage.getItem('monarchDeviceUUID')",
-        )
-        if _new_device_uuid != _mm_device_uuid and _new_device_uuid:
-            database.set_setting(conn, "monarch_device_uuid", _new_device_uuid)
+        with st.expander("Credentials", expanded=not _mm_enabled):
+            _mm_email = database.get_setting(conn, "monarch_email", "")
+            _mm_password = database.get_setting(conn, "monarch_password", "")
+            _new_email = st.text_input("Monarch Email", value=_mm_email, key="mm_email")
+            _new_password = st.text_input("Monarch Password", type="password",
+                                           value=_mm_password if _mm_password else "",
+                                           key="mm_password")
+            _mm_device_uuid = database.get_setting(conn, "monarch_device_uuid", "")
+            _new_device_uuid = st.text_input(
+                "Device UUID", value=_mm_device_uuid, key="mm_device_uuid",
+                help="Required: Open Monarch in browser → DevTools Console → run: localStorage.getItem('monarchDeviceUUID')",
+            )
+            if _new_device_uuid != _mm_device_uuid and _new_device_uuid:
+                database.set_setting(conn, "monarch_device_uuid", _new_device_uuid)
 
-        _mm_c1, _mm_c2 = st.columns(2)
-        if _mm_c1.button("Connect to Monarch", key="mm_connect"):
-            if _new_email and _new_password:
-                database.set_setting(conn, "monarch_email", _new_email)
-                database.set_setting(conn, "monarch_password", _new_password)
-                with st.spinner("Authenticating..."):
-                    try:
-                        _mm_client = monarch_sync.get_client(conn)
-                        database.set_setting(conn, "monarch_enabled", "1")
-                        st.success("Connected to Monarch Money!")
-                        _mm_accounts = monarch_sync.fetch_accounts(_mm_client)
-                        _suggested = monarch_sync.auto_suggest_mapping(_mm_accounts)
-                        if _suggested:
-                            monarch_sync.set_account_mapping(conn, _suggested)
-                        _mm_cats = monarch_sync.fetch_categories(_mm_client)
-                        _default_cat_map = monarch_sync.build_default_category_mapping(_mm_cats)
-                        monarch_sync.set_category_mapping(conn, _default_cat_map)
-                        st.rerun()
-                    except monarch_sync.MonarchEmailOTPRequired:
-                        st.session_state.mm_email_otp_needed = True
-                        st.rerun()
-                    except monarch_sync.MonarchMFARequired:
-                        st.session_state.mm_mfa_needed = True
-                        st.rerun()
-                    except monarch_sync.MonarchAuthFailed as e:
-                        st.error(f"Authentication failed: {e}")
-                    except Exception as e:
-                        st.error(f"Connection error: {e}")
-            else:
-                st.warning("Enter both email and password.")
+            _mm_c1, _mm_c2 = st.columns(2)
+            if _mm_c1.button("Connect to Monarch", key="mm_connect"):
+                if _new_email and _new_password:
+                    database.set_setting(conn, "monarch_email", _new_email)
+                    database.set_setting(conn, "monarch_password", _new_password)
+                    with st.spinner("Authenticating..."):
+                        try:
+                            _mm_client = monarch_sync.get_client(conn)
+                            database.set_setting(conn, "monarch_enabled", "1")
+                            st.success("Connected to Monarch Money!")
+                            _mm_accounts = monarch_sync.fetch_accounts(_mm_client)
+                            _suggested = monarch_sync.auto_suggest_mapping(_mm_accounts)
+                            if _suggested:
+                                monarch_sync.set_account_mapping(conn, _suggested)
+                            _mm_cats = monarch_sync.fetch_categories(_mm_client)
+                            _default_cat_map = monarch_sync.build_default_category_mapping(_mm_cats)
+                            monarch_sync.set_category_mapping(conn, _default_cat_map)
+                            st.rerun()
+                        except monarch_sync.MonarchEmailOTPRequired:
+                            st.session_state.mm_email_otp_needed = True
+                            st.rerun()
+                        except monarch_sync.MonarchMFARequired:
+                            st.session_state.mm_mfa_needed = True
+                            st.rerun()
+                        except monarch_sync.MonarchAuthFailed as e:
+                            st.error(f"Authentication failed: {e}")
+                        except Exception as e:
+                            st.error(f"Connection error: {e}")
+                else:
+                    st.warning("Enter both email and password.")
 
-        if _mm_c2.button("Disconnect", key="mm_disconnect", disabled=not _mm_enabled):
-            monarch_sync.disconnect()
-            database.set_setting(conn, "monarch_enabled", "0")
-            database.set_setting(conn, "monarch_email", "")
-            database.set_setting(conn, "monarch_password", "")
-            database.set_setting(conn, "monarch_last_sync", "")
-            database.set_setting(conn, "monarch_account_map", "{}")
-            database.set_setting(conn, "monarch_category_map", "{}")
-            st.session_state.monarch_synced = False
-            st.success("Disconnected from Monarch Money.")
-            st.rerun()
+            if _mm_c2.button("Disconnect", key="mm_disconnect", disabled=not _mm_enabled):
+                monarch_sync.disconnect()
+                database.set_setting(conn, "monarch_enabled", "0")
+                database.set_setting(conn, "monarch_email", "")
+                database.set_setting(conn, "monarch_password", "")
+                database.set_setting(conn, "monarch_last_sync", "")
+                database.set_setting(conn, "monarch_account_map", "{}")
+                database.set_setting(conn, "monarch_category_map", "{}")
+                st.session_state.monarch_synced = False
+                st.success("Disconnected from Monarch Money.")
+                st.rerun()
 
-        if st.session_state.get("mm_email_otp_needed", False):
-            st.warning("Monarch sent a verification code to your email.")
-            _otp_code = st.text_input("Email Verification Code", key="mm_email_otp_code", max_chars=6)
-            if st.button("Verify Code", key="mm_email_otp_verify"):
-                if _otp_code:
-                    try:
-                        _mm_client = monarch_sync.complete_email_otp(conn, _otp_code)
-                        database.set_setting(conn, "monarch_enabled", "1")
-                        st.session_state.mm_email_otp_needed = False
-                        _mm_accounts = monarch_sync.fetch_accounts(_mm_client)
-                        _suggested = monarch_sync.auto_suggest_mapping(_mm_accounts)
-                        if _suggested:
-                            monarch_sync.set_account_mapping(conn, _suggested)
-                        _mm_cats = monarch_sync.fetch_categories(_mm_client)
-                        _default_cat_map = monarch_sync.build_default_category_mapping(_mm_cats)
-                        monarch_sync.set_category_mapping(conn, _default_cat_map)
-                        st.success("Verified! Connected to Monarch Money.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Verification failed: {e}")
+            if st.session_state.get("mm_email_otp_needed", False):
+                st.warning("Monarch sent a verification code to your email.")
+                _otp_code = st.text_input("Email Verification Code", key="mm_email_otp_code", max_chars=6)
+                if st.button("Verify Code", key="mm_email_otp_verify"):
+                    if _otp_code:
+                        try:
+                            _mm_client = monarch_sync.complete_email_otp(conn, _otp_code)
+                            database.set_setting(conn, "monarch_enabled", "1")
+                            st.session_state.mm_email_otp_needed = False
+                            _mm_accounts = monarch_sync.fetch_accounts(_mm_client)
+                            _suggested = monarch_sync.auto_suggest_mapping(_mm_accounts)
+                            if _suggested:
+                                monarch_sync.set_account_mapping(conn, _suggested)
+                            _mm_cats = monarch_sync.fetch_categories(_mm_client)
+                            _default_cat_map = monarch_sync.build_default_category_mapping(_mm_cats)
+                            monarch_sync.set_category_mapping(conn, _default_cat_map)
+                            st.success("Verified! Connected to Monarch Money.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Verification failed: {e}")
 
-        if st.session_state.get("mm_mfa_needed", False):
-            st.warning("Monarch Money requires a multi-factor authentication code.")
-            _mfa_code = st.text_input("Enter MFA Code", key="mm_mfa_code", max_chars=6)
-            if st.button("Verify MFA", key="mm_mfa_verify"):
-                if _mfa_code:
-                    try:
-                        _mm_client = monarch_sync.complete_mfa(conn, _mfa_code)
-                        database.set_setting(conn, "monarch_enabled", "1")
-                        st.session_state.mm_mfa_needed = False
-                        _mm_accounts = monarch_sync.fetch_accounts(_mm_client)
-                        _suggested = monarch_sync.auto_suggest_mapping(_mm_accounts)
-                        if _suggested:
-                            monarch_sync.set_account_mapping(conn, _suggested)
-                        _mm_cats = monarch_sync.fetch_categories(_mm_client)
-                        _default_cat_map = monarch_sync.build_default_category_mapping(_mm_cats)
-                        monarch_sync.set_category_mapping(conn, _default_cat_map)
-                        st.success("MFA verified! Connected to Monarch Money.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"MFA verification failed: {e}")
+            if st.session_state.get("mm_mfa_needed", False):
+                st.warning("Monarch Money requires a multi-factor authentication code.")
+                _mfa_code = st.text_input("Enter MFA Code", key="mm_mfa_code", max_chars=6)
+                if st.button("Verify MFA", key="mm_mfa_verify"):
+                    if _mfa_code:
+                        try:
+                            _mm_client = monarch_sync.complete_mfa(conn, _mfa_code)
+                            database.set_setting(conn, "monarch_enabled", "1")
+                            st.session_state.mm_mfa_needed = False
+                            _mm_accounts = monarch_sync.fetch_accounts(_mm_client)
+                            _suggested = monarch_sync.auto_suggest_mapping(_mm_accounts)
+                            if _suggested:
+                                monarch_sync.set_account_mapping(conn, _suggested)
+                            _mm_cats = monarch_sync.fetch_categories(_mm_client)
+                            _default_cat_map = monarch_sync.build_default_category_mapping(_mm_cats)
+                            monarch_sync.set_category_mapping(conn, _default_cat_map)
+                            st.success("MFA verified! Connected to Monarch Money.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"MFA verification failed: {e}")
 
-    if _mm_enabled:
+    if monarch_sync and _mm_enabled:
         with st.expander("Account Mapping"):
             _acct_map = monarch_sync.get_account_mapping(conn)
             _vw_options = ["-- Skip --"] + list(config.ACCOUNTS.keys())
