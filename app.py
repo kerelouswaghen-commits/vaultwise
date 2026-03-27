@@ -98,10 +98,25 @@ st.markdown("""<style>
     @media (max-width: 768px) {
         [data-testid="stMetricValue"] { font-size: clamp(1rem, 4vw, 1.5rem); }
         [data-testid="stMetricLabel"] { font-size: clamp(0.6rem, 2vw, 0.75rem); }
-        .cat-card { padding: 12px; }
+        .cat-card { padding: 10px 12px; margin-bottom: 6px; }
         [data-testid="stExpander"] summary { font-size: 0.9rem; }
+        [data-testid="stExpander"] > div { padding: 0.5rem 0.75rem; }
+        /* Compact spacing */
+        .block-container { padding: 1rem 0.75rem !important; }
+        /* Chart height */
+        [data-testid="stPlotlyChart"] > div { max-height: 300px; }
+        /* Better touch targets */
+        button, [data-testid="stCheckbox"] label { min-height: 44px; }
+        /* Sidebar compact on mobile */
+        section[data-testid="stSidebar"] > div { padding-top: 0.5rem; }
+        section[data-testid="stSidebar"] [data-testid="stMetric"] { padding: 8px 12px; }
+        /* Tabs compact */
+        .stTabs [data-baseweb="tab"] { padding: 6px 10px; font-size: 0.85rem; }
     }
     [data-testid="stHorizontalBlock"] { flex-wrap: wrap; gap: 4px; }
+    /* Gauge responsive helpers */
+    .gauge-header, .gauge-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .gauge-detail { font-size: clamp(0.7rem, 2.5vw, 0.82rem); }
 </style>""", unsafe_allow_html=True)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", config.DB_FILENAME)
@@ -423,9 +438,10 @@ if page == "Dashboard":
     savings_target = int(database.get_setting(conn, "monthly_savings_target", "2000"))
 
     # Bonus toggles (default OFF for conservative planning)
-    _bonus_col1, _bonus_col2 = st.columns(2)
-    _kero_bonus_on = _bonus_col1.checkbox("Include Kero bonus ($1,500/mo)", value=False, key="dash_kero_bonus")
-    _maggie_bonus_on = _bonus_col2.checkbox("Include Maggie bonus ($417/mo)", value=False, key="dash_maggie_bonus")
+    with st.expander("Bonus income toggles", expanded=False):
+        _bonus_col1, _bonus_col2 = st.columns(2)
+        _kero_bonus_on = _bonus_col1.checkbox("Include Kero bonus ($1,500/mo)", value=False, key="dash_kero_bonus")
+        _maggie_bonus_on = _bonus_col2.checkbox("Include Maggie bonus ($417/mo)", value=False, key="dash_maggie_bonus")
     _kero_bonus_val = _income_data.get("kero_bonus", 0) if isinstance(_income_data, dict) else 0
     _maggie_bonus_val = _income_data.get("maggie_bonus", 0) if isinstance(_income_data, dict) else 0
     if not _kero_bonus_on:
@@ -471,20 +487,20 @@ if page == "Dashboard":
 
     _D = "$"
     _gauge_html = (
-        f'<div style="background:#f8f9fb;border:1px solid #e2e6ed;border-radius:14px;padding:16px 20px;margin-bottom:16px;">'
-        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-        f'<span style="font-weight:700;font-size:1rem;">🎯 {month_display} Savings Goal</span>'
-        f'<span style="font-weight:700;font-size:1.1rem;color:{_gauge_color};">{_status_icon} {_D}{_saved:,.0f} saved</span>'
+        f'<div style="background:#f8f9fb;border:1px solid #e2e6ed;border-radius:14px;padding:14px 16px;margin-bottom:16px;">'
+        f'<div class="gauge-header" style="margin-bottom:8px;">'
+        f'<span style="font-weight:700;font-size:clamp(0.85rem,3vw,1rem);">🎯 {month_display} Savings Goal</span>'
+        f'<span style="font-weight:700;font-size:clamp(0.9rem,3.5vw,1.1rem);color:{_gauge_color};">{_status_icon} {_D}{_saved:,.0f} saved</span>'
         f'</div>'
         f'<div style="height:12px;border-radius:6px;background:#e5e7eb;overflow:hidden;margin:8px 0;">'
         f'<div style="height:100%;width:{min(_spent_pct, 100):.0f}%;background:{_gauge_color};border-radius:6px;transition:width 0.3s;"></div>'
         f'</div>'
-        f'<div style="display:flex;justify-content:space-between;font-size:0.82rem;color:#6b7280;margin-top:4px;">'
-        f'<span>{_D}{_total_outflow:,.0f} est. total (fixed + tracked) of {_D}{_budget_limit:,.0f} budget</span>'
+        f'<div class="gauge-footer gauge-detail" style="color:#6b7280;margin-top:4px;">'
+        f'<span>{_D}{_total_outflow:,.0f} of {_D}{_budget_limit:,.0f} budget</span>'
         f'<span>Target: {_D}{savings_target:,}/mo</span>'
         f'</div>'
-        f'<div style="font-size:0.78rem;color:#9ca3af;margin-top:2px;">Fixed bills: {_D}{_effective_fixed:,.0f} · Discretionary: {_D}{_txn_discretionary:,.0f}</div>'
-        f'<div style="font-size:0.85rem;color:{_gauge_color};font-weight:600;margin-top:6px;">{_status_text}</div>'
+        f'<div class="gauge-detail" style="color:#9ca3af;margin-top:2px;">Fixed: {_D}{_effective_fixed:,.0f} · Disc: {_D}{_txn_discretionary:,.0f}</div>'
+        f'<div style="font-size:clamp(0.75rem,2.5vw,0.85rem);color:{_gauge_color};font-weight:600;margin-top:6px;">{_status_text}</div>'
         f'</div>'
     )
     st.markdown(_gauge_html, unsafe_allow_html=True)
@@ -626,10 +642,10 @@ if page == "Dashboard":
 
             st.markdown("")
             st.markdown("**📊 Summary**")
-            _s1, _s2, _s3 = st.columns(3)
+            _s1, _s2 = st.columns(2)
             _s1.metric("Saved", f"${_saved:,.0f}")
             _s2.metric("Target", f"${savings_target:,}")
-            _s3.metric("Gap", f"${_gap:+,.0f}", delta_color="normal" if _gap >= 0 else "inverse")
+            st.metric("Gap to Target", f"${_gap:+,.0f}", delta_color="normal" if _gap >= 0 else "inverse")
 
     # ── Cache integration ──────────────────────────────────────────────
     # Check cache staleness and offer refresh
