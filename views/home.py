@@ -466,8 +466,9 @@ def home_page():
             with st.chat_message("assistant"):
                 st.warning("Set your Anthropic API key in Settings to use the chat.")
 
-    dash_question = st.chat_input("Ask about spending or savings...", key="dashboard_chat_input")
-    if dash_question:
+    _chat_col, _send_col = st.columns([5, 1])
+    dash_question = _chat_col.text_input("Ask about spending or savings...", key="dashboard_chat_input", label_visibility="collapsed", placeholder="Ask about spending or savings...")
+    if _send_col.button("Send", key="chat_send", use_container_width=True) and dash_question:
         st.session_state.dashboard_chat_history.append({"role": "user", "content": dash_question})
         st.rerun()
 

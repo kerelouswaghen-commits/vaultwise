@@ -35,8 +35,22 @@ def inject_css():
     /* Hide branding */
     #MainMenu, footer, header { visibility: hidden; }
 
-    /* Chat */
+    /* Chat — compact on mobile */
     [data-testid="stChatMessage"] { border-radius: 12px; }
+    [data-testid="stChatMessage"] p,
+    [data-testid="stChatMessage"] li,
+    [data-testid="stChatMessage"] span {
+        font-size: 0.85rem !important;
+        line-height: 1.45 !important;
+    }
+    @media (max-width: 768px) {
+        [data-testid="stChatMessage"] p,
+        [data-testid="stChatMessage"] li,
+        [data-testid="stChatMessage"] span {
+            font-size: 0.8rem !important;
+        }
+        [data-testid="stChatMessage"] { padding: 8px 10px; }
+    }
 
     /* Category cards — thicker severity stripes */
     .cat-card { border-radius: 12px; padding: 16px; margin-bottom: 8px; border-left: 6px solid; }
