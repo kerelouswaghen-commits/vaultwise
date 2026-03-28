@@ -17,6 +17,7 @@ import database
 import models
 from shared.charts import CHART_LAYOUT, PALETTE, CATEGORY_PALETTE, SEVERITY_MAP, DIRECTION_ICONS, DEFAULT_TREND_DICT
 from shared.components import render_savings_gauge, render_category_card
+from components.budget_coach import render_budget_coach
 from shared.state import get_conn, get_advisor, escape_dollars
 
 
@@ -167,93 +168,14 @@ def home_page():
             _pace_html = f'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;margin-bottom:12px;"><span style="font-size:1.1rem;font-weight:700;color:#ef4444;">🛑 FREEZE spending</span> <span style="color:#6b7280;">for {_days_left} days — you\'re ${_over_budget:,.0f} over your discretionary budget</span></div>'
         st.markdown(_pace_html, unsafe_allow_html=True)
 
-    # ── 3. GAP CLOSER — Always shown (BUG FIX #3: DB cache) ─────────
-    # Show even when on track (reframed as "top opportunities")
-    _gap_data = None
-    _gap_amount = _over_budget if _over_budget > 0 else _txn_discretionary
-
-    # Check DB cache first (Bug fix #3)
-    _gap_data = database.get_gap_closer_cache(conn, selected_month, _gap_amount)
-
-    if _gap_data is None:
-        _gap_cache_key = f"gap_closer_{selected_month}_{_gap_amount:.0f}"
-        if _gap_cache_key not in st.session_state:
-            st.session_state[_gap_cache_key] = None
-
-        if st.session_state[_gap_cache_key] is None:
-            advisor = get_advisor()
-            if advisor:
-                with st.spinner("Analyzing your spending to find savings..."):
-                    try:
-                        _gap_txns = conn.execute(
-                            """SELECT date, description, amount, category FROM transactions
-                               WHERE strftime('%Y-%m', date) = ? AND amount < 0 ORDER BY amount ASC""",
-                            (selected_month,),
-                        ).fetchall()
-                        _gap_txn_text = "\n".join(f"{t['date']} | {t['description']} | ${t['amount']:,.2f} | {t['category']}" for t in _gap_txns)
-                        _gap_cat_summary = "\n".join(f"  {c['category']}: ${abs(c['total']):,.2f} ({c['txn_count']} txns)" for c in month_breakdown)
-
-                        _gap_result = advisor.generate_gap_closer(
-                            gap=_over_budget if _over_budget > 0 else 0,
-                            discretionary_spent=_txn_discretionary,
-                            discretionary_budget=_disc_budget,
-                            days_left=_days_left,
-                            savings_target=savings_target,
-                            transactions_text=_gap_txn_text,
-                            category_summary=_gap_cat_summary,
-                        )
-                        st.session_state[_gap_cache_key] = _gap_result
-                        # Persist to DB cache (Bug fix #3)
-                        database.set_gap_closer_cache(conn, selected_month, _gap_amount, _gap_result)
-                    except Exception as _e:
-                        st.session_state[_gap_cache_key] = {"error": str(_e)}
-
-        _gap_data = st.session_state.get(_gap_cache_key)
-
-    if _gap_data and "actions" in _gap_data:
-        if _over_budget > 0:
-            st.markdown(f"#### 🔴 You're ${_over_budget:,.0f} over budget — here's how to hit your ${savings_target:,} target")
-        else:
-            st.markdown("#### 💡 Your Top Opportunities This Month")
-
-        _cumulative_recovery = 0
-        for _act in _gap_data.get("actions", [])[:3]:
-            _recovery = _act.get("recovery", 0)
-            _cumulative_recovery += _recovery
-
-            if _over_budget > 0:
-                _gap_remaining = max(_over_budget - _cumulative_recovery, 0)
-                _pct_recovered = min(_cumulative_recovery / _over_budget * 100, 100) if _over_budget > 0 else 100
-                _bar_color = "#22c55e" if _gap_remaining == 0 else "#8b5cf6"
-                _gap_label = f"Recovered ${_cumulative_recovery:,.0f} of ${_over_budget:,.0f} ({_pct_recovered:.0f}%)" if _gap_remaining > 0 else "Gap closed ✅"
-            else:
-                _bar_color = "#14b8a6"
-                _gap_label = f"Potential savings: ${_cumulative_recovery:,.0f}/mo"
-                _pct_recovered = min(_cumulative_recovery / max(_gap_amount, 1) * 100, 100)
-
-            _recovery_text = f"Saves ${_act.get('recovery', 0):,.0f}"
-            _act_html = (
-                f'<div style="background:white;border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;margin-bottom:8px;">'
-                f'<div style="font-weight:700;color:#1a1a2e;">{_act.get("rank", "")}. {_act.get("category", "")} — {_act.get("merchant", "")}</div>'
-                f'<div style="color:#4b5563;margin:6px 0;">{_act.get("action", "")}</div>'
-                f'<div style="display:flex;justify-content:space-between;font-size:0.82rem;color:#6b7280;margin-bottom:4px;"><span>{_recovery_text}</span><span>{_gap_label}</span></div>'
-                f'<div style="display:flex;align-items:center;gap:10px;">'
-                f'<div style="flex:1;height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden;">'
-                f'<div style="height:100%;width:{_pct_recovered:.0f}%;background:{_bar_color};border-radius:4px;transition:width 0.3s;"></div></div>'
-                f'</div></div>'
-            )
-            st.markdown(_act_html, unsafe_allow_html=True)
-
-        if _over_budget > 0:
-            st.caption("Purple bar = recovery in progress | Green bar = gap fully closed")
-        else:
-            st.caption("Teal bar = potential monthly savings from each action")
-
-        _total_rec = _gap_data.get("total_recovery", _cumulative_recovery)
-        _msg = _gap_data.get("message", "")
-        if _msg:
-            _summary_color = "#22c55e" if _over_budget == 0 or _total_rec >= _over_budget else "#f59e0b"
-            st.markdown(f'<div style="background:#f8f9fb;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:{_summary_color};font-weight:600;">✅ {_msg}</div>', unsafe_allow_html=True)
+    # ── 3. BUDGET COACH ────────────────────────────────────────────────
+    render_budget_coach(
+        conn=conn, selected_month=selected_month,
+        monthly_income=_monthly_income, fixed_costs=_effective_fixed,
+        savings_target=savings_target, disc_budget=_disc_budget,
+        txn_discretionary=_txn_discretionary, over_budget=_over_budget,
+        days_left=_days_left, month_breakdown=month_breakdown,
+    )
 
     # Detailed financial breakdown
     _kero_net = _income_data.get("kero_net", 0) if isinstance(_income_data, dict) else 0

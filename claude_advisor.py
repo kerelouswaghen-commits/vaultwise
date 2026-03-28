@@ -175,6 +175,12 @@ class ClaudeAdvisor:
         response_text = self._call(system=system_prompt, messages=messages, max_tokens=1024, temperature=0.2)
         return self._parse_json(response_text)
 
+    def generate_coach_response(self, system_prompt: str, max_tokens: int = 1024) -> dict:
+        """Generic coach response — prompt comes from coach_prompts.py."""
+        messages = [{"role": "user", "content": "Analyze and respond based on the context provided."}]
+        response_text = self._call(system=system_prompt, messages=messages, max_tokens=max_tokens, temperature=0.3)
+        return self._parse_json(response_text)
+
     def generate_preventive_actions(self, categories_data: list[dict]) -> list[dict]:
         """Claude analyzes Prophet forecasts + historical trends to generate
         preventive spending actions per category."""

@@ -69,6 +69,13 @@ MIGRATIONS = [
             INSERT OR IGNORE INTO settings (key, value) VALUES ('monarch_category_map', '{}');
         """,
     },
+    {
+        "id": "007_budget_coach_defaults",
+        "sql": """
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('carry_forward_deficit', '0');
+            INSERT OR IGNORE INTO settings (key, value) VALUES ('accepted_guardrails', '{}');
+        """,
+    },
 ]
 
 
