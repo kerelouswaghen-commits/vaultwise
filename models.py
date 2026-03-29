@@ -232,10 +232,12 @@ def detect_anomalies(monthly_summaries: list[dict], threshold_std: float = 2.0) 
     return sorted(anomalies, key=lambda x: x["z_score"], reverse=True)
 
 
-def compute_savings_status(conn, target_monthly: int = 1000) -> dict:
+def compute_savings_status(conn, target_monthly: int = 1000, income_override: float = None) -> dict:
     """
     Compute savings status relative to a user-defined monthly target.
     Uses actual transaction data to compare income vs expenses.
+    income_override: if provided, use this as monthly income instead of DB
+                     income, for consistency with the Home page income model.
     """
     import database
     today = date.today()
@@ -254,9 +256,11 @@ def compute_savings_status(conn, target_monthly: int = 1000) -> dict:
 
     monthly_nets = []
     for r in rows:
-        net = (r["income"] or 0) + (r["expenses"] or 0)  # expenses are negative
-        monthly_nets.append({"month": r["month"], "income": r["income"] or 0,
-                            "expenses": abs(r["expenses"] or 0), "net": round(net, 2)})
+        month_income = income_override if income_override is not None else (r["income"] or 0)
+        expenses_val = abs(r["expenses"] or 0)
+        net = month_income - expenses_val
+        monthly_nets.append({"month": r["month"], "income": month_income,
+                            "expenses": expenses_val, "net": round(net, 2)})
 
     avg_net = sum(m["net"] for m in monthly_nets) / max(len(monthly_nets), 1) if monthly_nets else 0
     avg_expenses = sum(m["expenses"] for m in monthly_nets) / max(len(monthly_nets), 1) if monthly_nets else 0

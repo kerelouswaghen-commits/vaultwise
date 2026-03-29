@@ -90,12 +90,13 @@ def get_merchant_frequency(conn, months: int = 3) -> list[dict]:
     return database.get_merchant_spending(conn, months)
 
 
-def get_category_budget_status(conn) -> list[dict]:
+def get_category_budget_status(conn, month_key: str = None) -> list[dict]:
     """
     Each category's current month vs historical — using statistical analysis.
     Returns budget status from analytics engine (percentile-based, not hardcoded).
+    month_key: optional "YYYY-MM" to evaluate a specific month.
     """
-    statuses = analytics.compute_budget_status(conn)
+    statuses = analytics.compute_budget_status(conn, month_key=month_key)
     return [
         {
             "category": s.category,

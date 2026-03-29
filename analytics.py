@@ -593,23 +593,36 @@ def _generate_trend_action(category: str, direction: str, severity: str,
 # Data-driven budget analysis
 # ---------------------------------------------------------------------------
 
-def compute_budget_status(conn) -> list[BudgetStatus]:
+def compute_budget_status(conn, month_key: str = None) -> list[BudgetStatus]:
     """
     Compute budget status for every active category using statistical methods.
     No hardcoded thresholds — uses percentiles and standard deviations.
+    month_key: optional "YYYY-MM" to evaluate a specific month instead of today.
     """
-    today = _get_data_date(conn)
+    if month_key:
+        parts = month_key.split("-")
+        ref_year, ref_month = int(parts[0]), int(parts[1])
+        days_in_month = monthrange(ref_year, ref_month)[1]
+        today_actual = _get_data_date(conn)
+        # Current month: use today's day; past month: use full month
+        if ref_year == today_actual.year and ref_month == today_actual.month:
+            today = today_actual
+        else:
+            today = date(ref_year, ref_month, days_in_month)
+    else:
+        today = _get_data_date(conn)
     month_start = today.replace(day=1)
     days_elapsed = (today - month_start).days + 1
     days_in_month = monthrange(today.year, today.month)[1]
     pct_elapsed = days_elapsed / days_in_month
 
-    # Current month spending
+    # Target month spending (bounded to the single month)
+    month_end = date(today.year, today.month, days_in_month)
     current_rows = conn.execute("""
         SELECT category, SUM(amount) as total
-        FROM transactions WHERE date >= ? AND amount < 0
+        FROM transactions WHERE date >= ? AND date <= ? AND amount < 0
         GROUP BY category
-    """, (month_start.isoformat(),)).fetchall()
+    """, (month_start.isoformat(), month_end.isoformat())).fetchall()
     current_map = {r["category"]: abs(r["total"]) for r in current_rows}
 
     # Historical monthly totals (last 6 months, excluding current)

@@ -161,6 +161,7 @@ def home_page():
         total_outflow=_total_outflow, budget_limit=_budget_limit,
         savings_target=savings_target, effective_fixed=_effective_fixed,
         txn_discretionary=_txn_discretionary, spent_pct=_spent_pct,
+        txn_fixed=_txn_fixed,
     )
 
     # ── 2. KPI ROW: Savings Rate, Daily Pace, Streak ─────────────────

@@ -14,7 +14,7 @@ from shared.state import escape_dollars, get_conn
 
 def render_savings_gauge(month_display, saved, gauge_color, status_icon, status_text,
                          total_outflow, budget_limit, savings_target, effective_fixed,
-                         txn_discretionary, spent_pct, compact=False):
+                         txn_discretionary, spent_pct, compact=False, txn_fixed=None):
     """Render the savings goal gauge. Use compact=True for the sidebar widget."""
     D = "$"
     if compact:
@@ -60,7 +60,9 @@ def render_savings_gauge(month_display, saved, gauge_color, status_icon, status_
         f'<span>Target: {D}{savings_target:,}/mo</span>'
         f'</div>'
         f'<div class="gauge-detail" style="color:#9ca3af;margin-top:2px;">Fixed: {D}{effective_fixed:,.0f} · Disc: {D}{txn_discretionary:,.0f}</div>'
-        f'<div style="font-size:clamp(0.75rem,2.5vw,0.85rem);color:{gauge_color};font-weight:600;margin-top:6px;">{status_text}</div>'
+        + (f'<div style="font-size:0.72rem;color:#b45309;margin-top:2px;">Includes {D}{effective_fixed - txn_fixed:,.0f} estimated fixed costs not yet in transactions</div>'
+           if txn_fixed is not None and effective_fixed > txn_fixed else '')
+        + f'<div style="font-size:clamp(0.75rem,2.5vw,0.85rem);color:{gauge_color};font-weight:600;margin-top:6px;">{status_text}</div>'
         f'</div>'
     )
     st.markdown(html, unsafe_allow_html=True)

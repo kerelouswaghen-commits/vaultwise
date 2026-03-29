@@ -31,10 +31,10 @@ def _get_muted():
 # DATA ASSEMBLY
 # ═══════════════════════════════════════════════════════════════
 
-def _get_flex_categories(conn, fixed_cats):
+def _get_flex_categories(conn, fixed_cats, month_key=None):
     """Get budget status for flexible (non-fixed, non-muted) categories.
     Also handles: merging duplicate categories, hiding $0 categories."""
-    all_status = spending_intelligence.get_category_budget_status(conn)
+    all_status = spending_intelligence.get_category_budget_status(conn, month_key=month_key)
     muted = _get_muted()
     merges = getattr(config, 'CATEGORY_MERGES', {})
     merge_sources = set()
@@ -586,7 +586,7 @@ def render(conn, selected_month, sel_year, sel_month,
     )
 
     # ── Get flexible categories (exclude fixed + muted) ──────
-    flex_status = _get_flex_categories(conn, fixed_cats)
+    flex_status = _get_flex_categories(conn, fixed_cats, month_key=selected_month)
 
     if not flex_status:
         st.info("No flexible spending data for this month.")
@@ -594,7 +594,11 @@ def render(conn, selected_month, sel_year, sel_month,
 
     # ── Call Claude (cached in session state) ────────────────
     sel_day = date.today().day if viewing_current else days_in_month
-    cache_key = f"coach_{selected_month}_{int(txn_discretionary)}_{sel_day}"
+    _month_txn_count = conn.execute(
+        "SELECT COUNT(*) as c FROM transactions WHERE strftime('%Y-%m', date) = ?",
+        (selected_month,)
+    ).fetchone()["c"]
+    cache_key = f"coach_{selected_month}_{int(txn_discretionary)}_{sel_day}_{_month_txn_count}"
     if cache_key not in st.session_state:
         st.session_state[cache_key] = None
 

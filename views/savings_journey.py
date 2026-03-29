@@ -22,7 +22,10 @@ def savings_journey_page():
     conn = get_conn()
 
     savings_target = int(database.get_setting(conn, "monthly_savings_target", "2000"))
-    savings_status = models.compute_savings_status(conn, savings_target)
+    _today = date.today()
+    _income_data = models.get_income_for_month(_today.year, _today.month)
+    _monthly_income = _income_data["total_income"] if isinstance(_income_data, dict) else _income_data
+    savings_status = models.compute_savings_status(conn, savings_target, income_override=_monthly_income)
 
     # ── Section 1: Where You Are ──────────────────────────────────────
     st.markdown("### Where You Are")
@@ -60,6 +63,7 @@ def savings_journey_page():
             """).fetchall()
             hist_months = [r["month"] for r in hist_rows]
             hist_vals = [abs(r["spending"]) for r in hist_rows if r["spending"]]
+            avg = sum(hist_vals) / len(hist_vals) if hist_vals else 0
 
             fig = go.Figure()
             fig.add_trace(go.Scatter(
