@@ -117,8 +117,23 @@ def home_page():
     for _sources in _merges.values():
         _merge_sources.update(_sources)
 
+    # Actually combine merged source amounts into their target category
+    for _target, _sources in _merges.items():
+        _target_entry = next((c for c in month_breakdown if c["category"] == _target), None)
+        for _src in _sources:
+            _src_entry = next((c for c in month_breakdown if c["category"] == _src), None)
+            if _src_entry:
+                if _target_entry:
+                    _target_entry["total"] += _src_entry["total"]
+                    _target_entry["txn_count"] += _src_entry["txn_count"]
+                else:
+                    # Target doesn't exist yet — rename the source entry
+                    _src_entry["category"] = _target
+                    _target_entry = _src_entry
+                    _merge_sources.discard(_src)  # keep it since it became the target
+
     # CRITICAL: Filter month_breakdown BEFORE any math
-    # Remove muted categories and merge sources entirely
+    # Remove muted categories and merge sources (whose amounts are now in the target)
     month_breakdown = [
         c for c in month_breakdown
         if c["category"] not in _muted_cats

@@ -19,11 +19,27 @@ def get_active_categories(conn) -> list[str]:
     """
     Return the active category list. If dynamic categories have been defined
     in the category_definitions table, use those. Otherwise fall back to config.CATEGORIES.
+
+    In both cases, also include any category that exists in transaction data
+    but is missing from the list — prevents silently dropping real spending
+    when Monarch Money introduces new category names.
     """
     definitions = database.get_category_definitions(conn)
     if definitions:
-        return [d["name"] for d in definitions if d["name"] not in config.EXCLUDED_CATEGORIES]
-    return [c for c in config.CATEGORIES if c not in config.EXCLUDED_CATEGORIES]
+        cats = [d["name"] for d in definitions if d["name"] not in config.EXCLUDED_CATEGORIES]
+    else:
+        cats = [c for c in config.CATEGORIES if c not in config.EXCLUDED_CATEGORIES]
+
+    # Include any transaction categories not yet in the list (e.g., new Monarch categories)
+    db_cats = conn.execute(
+        "SELECT DISTINCT category FROM transactions WHERE amount < 0"
+    ).fetchall()
+    known = set(cats) | config.EXCLUDED_CATEGORIES
+    for row in db_cats:
+        if row["category"] not in known:
+            cats.append(row["category"])
+
+    return cats
 
 
 def get_category_hierarchy(conn) -> dict:
