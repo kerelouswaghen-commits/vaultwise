@@ -50,8 +50,20 @@ def _get_history(conn, category):
     rows = database.get_category_monthly_history(conn, category, months=6)
     # Rows come back newest-first; reverse for chronological sparklines
     rows = list(reversed(rows))
+
+    # Build labels with year context when crossing year boundary
+    years_present = {r["month"][:4] for r in rows}
+    cross_year = len(years_present) > 1
+    labels = []
+    for r in rows:
+        month_num = int(r["month"][5:7])
+        month_label = calendar.month_abbr[month_num]
+        if cross_year:
+            month_label += f" '{r['month'][2:4]}"
+        labels.append(month_label)
+
     return {
-        "labels": [calendar.month_abbr[int(r["month"][5:7])] for r in rows],
+        "labels": labels,
         "values": [round(abs(r["total"])) for r in rows],
     }
 
@@ -156,33 +168,50 @@ def _build_prompt(flex_status, conn, month_key, sel_year, sel_month,
     return (
         "You are a budget coach inside a personal finance app. "
         "Analyze the spending data and generate insights.\n\n"
+        f"CONTEXT: This user's spending money is ${disc_budget:,.0f}/month. "
+        f"That's what remains after income (${monthly_income:,.0f}) minus "
+        f"fixed bills (${effective_fixed:,.0f}) minus savings target "
+        f"(${savings_target:,}/mo). Every number and percentage you mention "
+        f"should be relative to this ${disc_budget:,.0f} spending money — "
+        f"NOT relative to total income.\n\n"
         f"BUDGET:\n"
-        f"- Income: ${monthly_income:,.0f}\n"
-        f"- Fixed bills: ${effective_fixed:,.0f}\n"
-        f"- Savings target: ${savings_target:,}/mo\n"
-        f"- Spending money: ${disc_budget:,.0f}\n"
+        f"- Spending money: ${disc_budget:,.0f} (THIS is the budget)\n"
         f"- Spent: ${txn_discretionary:,.0f}\n"
         f"- Remaining: ${discretionary_left:,.0f}\n"
+        f"- % used: {round(txn_discretionary / max(disc_budget, 1) * 100)}%\n"
         f"- {time_ctx}\n\n"
-        f"CATEGORIES:\n" + "\n".join(cat_lines) + "\n\n"
+        f"CATEGORIES (flexible spending only — fixed bills already excluded):\n"
+        + "\n".join(cat_lines) + "\n\n"
         f"{other_detail}\n\n"
-        f"FORECASTS:\n" + ("\n".join(fc_lines) if fc_lines else "None available.") + "\n\n"
-        f"EXCLUDED (never recommend cutting): {excluded}\n\n"
+        f"FORECASTS:\n"
+        + ("\n".join(fc_lines) if fc_lines else "None available.") + "\n\n"
+        f"EXCLUDED (already removed from the data above): {excluded}\n\n"
         "RETURN a JSON object with:\n"
-        '1. "headline": 8 words max\n'
-        '2. "body": 3-5 sentences. Warm, direct. Past tense for completed months. '
-        'Use forecast data in forward-looking comments when relevant. '
-        'Never suggest returning purchases or undoing transactions.\n'
-        '3. "categories": array sorted by concern (most concerning first), each with:\n'
-        '   - "name": exact category name from the data above\n'
-        '   - "badge": one of: "way over", "elevated", "hot pace", "one-time", '
-        '"normal", "under pace", "low"\n'
+        '1. "headline": 8 words max. Reference spending money, not income.\n'
+        '2. "body": 3-5 sentences. Frame everything relative to the '
+        f'${disc_budget:,.0f} spending money budget. Example: '
+        f'"You\'ve used 45% of your spending money halfway through the month." '
+        'Past tense for completed months. Never suggest returning purchases. '
+        'Use forecast data when relevant.\n'
+        '3. "categories": array sorted by concern (worst first), each with:\n'
+        '   - "name": exact category name from data above\n'
+        '   - "badge": "way over" | "elevated" | "hot pace" | "one-time" | '
+        '"normal" | "under pace" | "low"\n'
         '   - "badge_icon": single emoji\n'
-        '   - "color": "#dc2626" red, "#f59e0b" amber, "#22c55e" green, "#6b7280" gray\n'
-        '   - "note": one sentence about this category\n\n'
-        "IMPORTANT: Sort categories with most concerning FIRST (way over, elevated) "
-        "and normal/low LAST.\n\n"
-        "Return ONLY valid JSON. No markdown fences. No explanation."
+        '   - "color": "#dc2626" | "#f59e0b" | "#22c55e" | "#6b7280"\n'
+        '   - "note": one sentence. Mention amount relative to typical. '
+        'If merchant appears miscategorized (e.g. Amazon in two categories), '
+        'note it briefly.\n\n'
+        "SORT: Most concerning first (way over → elevated → normal → low).\n\n"
+        "CATEGORY NOTE: Some merchants may appear in multiple categories "
+        "(e.g., Amazon in both 'Online Shopping' and 'Other Shopping'). "
+        "If you notice this, mention it briefly in the relevant category's "
+        "note (e.g., 'includes some Amazon purchases also in Online Shopping'). "
+        "Do NOT double-count the impact.\n\n"
+        "DUPLICATE CHECK: If categories look like they overlap "
+        "(e.g., 'Education' $57 when 'Childcare & Education' is excluded as fixed), "
+        "flag the smaller one as possibly miscategorized in your note.\n\n"
+        "Return ONLY valid JSON. No markdown. No explanation."
     )
 
 
@@ -417,37 +446,64 @@ def _render_detail_expander(cat_name, hist, forecast, merchants, spent,
             f'<div style="font-weight:700;font-size:0.9rem;">{percentile:.0f}th</div></div>'
             f'</div>', unsafe_allow_html=True)
 
-        # Sparkline
-        if hist["values"] and len(hist["values"]) >= 2:
-            fill_rgba = _hex_to_rgba(color, 0.08)
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=hist["labels"],
-                y=hist["values"],
-                mode="lines+markers",
-                line=dict(color=color, width=2.5, shape="spline"),
-                marker=dict(size=5, color=color),
-                fill="tozeroy",
-                fillcolor=fill_rgba,
-                hovertemplate="%{x}: $%{y:,.0f}<extra></extra>",
-            ))
-            fig.update_layout(
-                height=100,
-                margin=dict(t=5, b=25, l=45, r=10),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                xaxis=dict(showgrid=False, tickfont=dict(size=10, color="#aaa"),
-                           type="category"),
-                yaxis=dict(
-                    showgrid=True, gridcolor="#f5f5f5",
-                    tickfont=dict(size=9, color="#bbb"),
-                    tickformat="$,.0f", zeroline=False,
-                ),
-                showlegend=False,
-                hovermode="x",
-            )
-            st.plotly_chart(fig, use_container_width=True,
-                            config={"displayModeBar": False})
+        # Sparkline — always show, even with sparse data
+        if hist["values"]:
+            if len(hist["values"]) == 1:
+                # Only one data point: show as a single bar instead
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    x=hist["labels"],
+                    y=hist["values"],
+                    marker_color=color,
+                    hovertemplate="%{x}: $%{y:,.0f}<extra></extra>",
+                ))
+                fig.update_layout(
+                    height=80,
+                    margin=dict(t=5, b=25, l=45, r=10),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    xaxis=dict(showgrid=False, tickfont=dict(size=10, color="#aaa")),
+                    yaxis=dict(
+                        showgrid=True, gridcolor="#f5f5f5",
+                        tickfont=dict(size=9, color="#bbb"),
+                        tickformat="$,.0f", zeroline=False,
+                    ),
+                    showlegend=False,
+                )
+                st.plotly_chart(fig, use_container_width=True,
+                                config={"displayModeBar": False})
+            else:
+                fill_rgba = _hex_to_rgba(color, 0.08)
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=hist["labels"],
+                    y=hist["values"],
+                    mode="lines+markers",
+                    line=dict(color=color, width=2.5, shape="spline"),
+                    marker=dict(size=5, color=color),
+                    fill="tozeroy",
+                    fillcolor=fill_rgba,
+                    hovertemplate="%{x}: $%{y:,.0f}<extra></extra>",
+                ))
+                fig.update_layout(
+                    height=100,
+                    margin=dict(t=5, b=25, l=45, r=10),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    xaxis=dict(showgrid=False, tickfont=dict(size=10, color="#aaa"),
+                               type="category"),
+                    yaxis=dict(
+                        showgrid=True, gridcolor="#f5f5f5",
+                        tickfont=dict(size=9, color="#bbb"),
+                        tickformat="$,.0f", zeroline=False,
+                    ),
+                    showlegend=False,
+                    hovermode="x",
+                )
+                st.plotly_chart(fig, use_container_width=True,
+                                config={"displayModeBar": False})
+        else:
+            st.caption("No spending history yet for this category.")
 
         # Forecast
         if forecast:
@@ -638,3 +694,13 @@ def render(conn, selected_month, sel_year, sel_month,
             f'{"this" if viewing_current else "that"} month.</div>',
             unsafe_allow_html=True,
         )
+
+    # ── Refresh button ─────────────────────────────────────
+    if st.button("\U0001f504 Refresh Analysis", key=f"refresh_{selected_month}"):
+        keys_to_clear = [
+            k for k in st.session_state.keys()
+            if k.startswith(f"coach_{selected_month}")
+        ]
+        for k in keys_to_clear:
+            del st.session_state[k]
+        st.rerun()

@@ -97,8 +97,21 @@ def home_page():
     _fixed_cats = {"Housing & Utilities", "Debt Payments", "Family Support", "Transportation",
                    "Phone & Internet", "Car Insurance"}
     _fixed_cats.update(config.MONARCH_FIXED_MAP.keys())
-    _txn_fixed = sum(abs(c["total"]) for c in month_breakdown if c["category"] in _fixed_cats)
-    _txn_discretionary = total_spent - _txn_fixed
+    _muted_cats = set(getattr(config, 'MUTED_CATEGORIES', []))
+
+    # Compute spending totals EXCLUDING muted categories entirely
+    _txn_fixed = sum(
+        abs(c["total"]) for c in month_breakdown
+        if c["category"] in _fixed_cats
+        and c["category"] not in _muted_cats
+    )
+    _txn_discretionary = sum(
+        abs(c["total"]) for c in month_breakdown
+        if c["category"] not in _fixed_cats
+        and c["category"] not in _muted_cats
+    )
+    # Recalculate total_spent without muted for display purposes
+    total_spent = _txn_fixed + _txn_discretionary
     _effective_fixed = max(_fixed_costs, _txn_fixed)
     _total_outflow = _effective_fixed + _txn_discretionary
     _budget_limit = _monthly_income - savings_target
@@ -261,8 +274,13 @@ def home_page():
         st.rerun()
 
     # ── 5. CATEGORY BAR CHART (severity colored) ─────────────────────
-    cats = [c["category"] for c in month_breakdown]
-    vals = [abs(c["total"]) for c in month_breakdown]
+    _chart_cats = [
+        c for c in month_breakdown
+        if c["category"] not in _fixed_cats
+        and c["category"] not in _muted_cats
+    ]
+    cats = [c["category"] for c in _chart_cats]
+    vals = [abs(c["total"]) for c in _chart_cats]
 
     trend_results = {}
     for cat in cats:
