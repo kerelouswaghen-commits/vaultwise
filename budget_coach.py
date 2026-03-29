@@ -501,7 +501,7 @@ def _render_detail_expander(cat_name, hist, forecast, merchants, spent,
                 showlegend=False,
                 hovermode="x",
             )
-            st.plotly_chart(fig, use_container_width=True,
+            st.plotly_chart(fig, width="stretch",
                             config={"displayModeBar": False})
         elif hist["values"] and len(hist["values"]) == 1:
             st.metric(

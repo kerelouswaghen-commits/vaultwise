@@ -147,7 +147,7 @@ def settings_page():
 
     edit_df = pd.DataFrame(edit_data)
     edited = st.data_editor(
-        edit_df, num_rows="dynamic", use_container_width=True, hide_index=True,
+        edit_df, num_rows="dynamic", width="stretch", hide_index=True,
         column_config={
             "Category": st.column_config.TextColumn("Category", width="medium"),
             "Description": st.column_config.TextColumn("Description", width="large"),
@@ -220,7 +220,7 @@ def settings_page():
             if display_cols:
                 st.dataframe(
                     prop_df[display_cols].rename(columns={"name": "Category", "description": "Description"}),
-                    use_container_width=True, hide_index=True,
+                    width="stretch", hide_index=True,
                 )
         rename_mapping = result.get("rename_mapping", {})
         if rename_mapping:
@@ -369,7 +369,7 @@ def settings_page():
                 fig.update_layout(**CHART_LAYOUT, height=max(250, len(cats_list) * 35 + 80),
                                  showlegend=False, yaxis=dict(autorange="reversed"),
                                  xaxis=dict(title="Amount ($)", gridcolor="#f3f4f6", tickformat="$,.0f"))
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
             # Big charges
             big_charges = [t for t in week_txns if t["amount"] < -150]
@@ -862,7 +862,7 @@ def settings_page():
         stmt_data = [{"Account": config.ACCOUNTS.get(s["account_id"], {}).get("label", s["account_id"]),
                       "Period": f"{s['period_start']} — {s['period_end']}",
                       "Txns": s["transaction_count"], "File": s["filename"]} for s in stmts]
-        st.dataframe(pd.DataFrame(stmt_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(stmt_data), width="stretch", hide_index=True)
 
     st.divider()
 

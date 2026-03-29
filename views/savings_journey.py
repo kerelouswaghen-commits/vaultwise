@@ -209,7 +209,7 @@ def savings_journey_page():
         showlegend=False,
     )
 
-    st.plotly_chart(_fig, use_container_width=True,
+    st.plotly_chart(_fig, width="stretch",
                     config={"displayModeBar": False})
 
     # Metric pills

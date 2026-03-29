@@ -64,6 +64,17 @@ def _check_password():
 if not _check_password():
     st.stop()
 
+# Temporary debug banner — append ?debug=1 to URL to verify config on Cloud
+if st.query_params.get("debug") == "1":
+    st.warning(
+        f"**Config debug**\n\n"
+        f"- CATEGORY_MERGES: {getattr(config, 'CATEGORY_MERGES', '⚠️ MISSING')}\n"
+        f"- MUTED_CATEGORIES: {getattr(config, 'MUTED_CATEGORIES', '⚠️ MISSING')}\n"
+        f"- MERCHANT_CATEGORY_OVERRIDES: {getattr(config, 'MERCHANT_CATEGORY_OVERRIDES', '⚠️ MISSING')}\n"
+        f"- FIXED_MONTHLY_EXPENSES count: {len(getattr(config, 'FIXED_MONTHLY_EXPENSES', {}))}\n"
+        f"- INCOME count: {len(getattr(config, 'INCOME', []))}"
+    )
+
 database.init_db(DB_PATH)
 init_session()
 load_persisted_config()

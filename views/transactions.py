@@ -114,7 +114,7 @@ def transactions_page():
                 xaxis=dict(side="top", tickangle=-45, dtick=tick_interval),
                 yaxis=dict(autorange="reversed"),
             )
-            st.plotly_chart(fig_heat, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_heat, width="stretch", config={"displayModeBar": False})
 
             missing_months = database.get_missing_months(conn)
             if missing_months:
@@ -424,7 +424,7 @@ def transactions_page():
 
             st.dataframe(
                 display_df,
-                use_container_width=True, hide_index=True, height=500,
+                width="stretch", hide_index=True, height=500,
                 column_config={
                     "Amount": st.column_config.NumberColumn(format="$%.2f"),
                 },
@@ -521,7 +521,7 @@ def transactions_page():
                 texttemplate="%{label}<br>$%{value:,.0f}",
                 hovertemplate="<b>%{label}</b><br>Spend: $%{value:,.0f}<br>Transactions: %{customdata[0]}<extra></extra>",
             )
-            st.plotly_chart(fig_tree, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_tree, width="stretch", config={"displayModeBar": False})
 
         st.markdown("#### Category Trends Over Time")
         monthly_cat_rows = conn.execute(f"""
@@ -546,7 +546,7 @@ def transactions_page():
                 xaxis_title=None, yaxis_title="Monthly Spend",
                 legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
             )
-            st.plotly_chart(fig_area, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_area, width="stretch", config={"displayModeBar": False})
         else:
             st.info("Not enough data for trend analysis.")
 

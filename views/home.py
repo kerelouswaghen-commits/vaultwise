@@ -344,7 +344,7 @@ def home_page():
     fig.update_layout(**CHART_LAYOUT, height=max(350, len(cats) * 38 + 80),
                      showlegend=False, yaxis=dict(autorange="reversed"),
                      xaxis=dict(title="Amount ($)", gridcolor="#f3f4f6", tickformat="$,.0f"))
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     st.caption("Bar color: 🔴 needs action | 🟠 watch | 🟢 on track (based on statistical trend analysis)")
 
@@ -372,11 +372,11 @@ def home_page():
 
     _qi = list(_quick_actions.items())
     _r1c1, _r1c2 = st.columns(2)
-    _r1c1.button(_qi[0][0], use_container_width=True, key="quick_0", on_click=_ask_quick, args=(_qi[0][1],))
-    _r1c2.button(_qi[1][0], use_container_width=True, key="quick_1", on_click=_ask_quick, args=(_qi[1][1],))
+    _r1c1.button(_qi[0][0], width="stretch", key="quick_0", on_click=_ask_quick, args=(_qi[0][1],))
+    _r1c2.button(_qi[1][0], width="stretch", key="quick_1", on_click=_ask_quick, args=(_qi[1][1],))
     _r2c1, _r2c2 = st.columns(2)
-    _r2c1.button(_qi[2][0], use_container_width=True, key="quick_2", on_click=_ask_quick, args=(_qi[2][1],))
-    _r2c2.button(_qi[3][0], use_container_width=True, key="quick_3", on_click=_ask_quick, args=(_qi[3][1],))
+    _r2c1.button(_qi[2][0], width="stretch", key="quick_2", on_click=_ask_quick, args=(_qi[2][1],))
+    _r2c2.button(_qi[3][0], width="stretch", key="quick_3", on_click=_ask_quick, args=(_qi[3][1],))
 
     # Display chat history
     for msg in st.session_state.dashboard_chat_history:

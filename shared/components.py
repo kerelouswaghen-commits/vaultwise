@@ -171,7 +171,7 @@ def render_category_card(cat_data, trend_d, conn, claude_actions, selected_month
                              legend=dict(orientation="h", yanchor="bottom", y=1.02, font_size=9),
                              xaxis=dict(showgrid=False),
                              yaxis=dict(gridcolor="#f3f4f6", tickformat="$,.0f"))
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
         col_info, col_action = st.columns([1, 1])
 
@@ -210,7 +210,7 @@ def render_category_card(cat_data, trend_d, conn, claude_actions, selected_month
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                         font=dict(size=11),
                     )
-                    st.plotly_chart(fig_m, use_container_width=True, config={"displayModeBar": False})
+                    st.plotly_chart(fig_m, width="stretch", config={"displayModeBar": False})
 
             # Advanced analytics
             cached_adv = analytics_cache.get_cached_advanced(conn, cat)
