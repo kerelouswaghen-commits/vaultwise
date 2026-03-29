@@ -398,7 +398,8 @@ def home_page():
                         mode="lines+markers",
                         line=dict(color=_bar_color, width=2.5),
                         marker=dict(size=6, color=_bar_color),
-                        fill="tozeroy", fillcolor=f"{_bar_color}10",
+                        fill="tozeroy",
+                        fillcolor=f"rgba({int(_bar_color[1:3],16)},{int(_bar_color[3:5],16)},{int(_bar_color[5:7],16)},0.06)" if _bar_color.startswith("#") and len(_bar_color) == 7 else "rgba(107,114,128,0.06)",
                         hovertemplate="$%{y:,.0f}<extra></extra>",
                     ))
                     _spark_fig.update_layout(
