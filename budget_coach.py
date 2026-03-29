@@ -432,11 +432,9 @@ def _render_category_card(cat_info, spent, typical, escape_fn):
         f'<div style="height:100%;width:{bar_pct}%;'
         f'background:{color};border-radius:3px;"></div></div>'
 
-        # Row 3: note + typical
+        # Row 3: note (Claude's note already includes "actual vs expected")
         f'<div style="font-size:0.78rem;color:#666;line-height:1.35;">'
         f'{note}</div>'
-        f'<div style="font-size:0.72rem;color:#bbb;margin-top:2px;">'
-        f'\\${spent:,.0f} actual vs \\${typical:,.0f} expected</div>'
 
         f'</div>',
         unsafe_allow_html=True,

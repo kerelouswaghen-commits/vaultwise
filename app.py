@@ -113,10 +113,18 @@ with st.sidebar:
             _raw_breakdown = database.get_monthly_category_breakdown(conn, current_month)
             _active_cats = category_engine.get_active_categories(conn)
             _mb = [c for c in _raw_breakdown if c["category"] in _active_cats]
+
+            # Filter muted + merge sources (same logic as views/home.py)
+            _muted = set(getattr(config, 'MUTED_CATEGORIES', []))
+            _msrc = set()
+            for _srcs in getattr(config, 'CATEGORY_MERGES', {}).values():
+                _msrc.update(_srcs)
+            _mb = [c for c in _mb if c["category"] not in _muted and c["category"] not in _msrc]
             _total_spent = sum(abs(c["total"]) for c in _mb)
 
-            _fixed_cats = {"Housing & Utilities", "Debt Payments", "Giving & Church", "Family Support",
-                           "Transportation", "Childcare & Education", "Phone & Internet", "Car Insurance"}
+            _fixed_cats = {"Housing & Utilities", "Debt Payments", "Family Support",
+                           "Transportation", "Phone & Internet", "Car Insurance"}
+            _fixed_cats.update(getattr(config, 'MONARCH_FIXED_MAP', {}).keys())
             _txn_fixed = sum(abs(c["total"]) for c in _mb if c["category"] in _fixed_cats)
             _txn_disc = _total_spent - _txn_fixed
             _eff_fixed = max(_fixed_costs, _txn_fixed)
