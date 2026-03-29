@@ -111,6 +111,7 @@ EXCLUDED_CATEGORIES = {
     "Income & Refunds",
     "Debt & Loan Payments",
     "Debt Payments",
+    "Financial Transfers",
 }
 
 # ---------------------------------------------------------------------------
