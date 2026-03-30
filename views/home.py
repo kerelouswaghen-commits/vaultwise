@@ -165,40 +165,73 @@ def home_page():
     _savings_rate = (_saved / _monthly_income * 100) if _monthly_income > 0 else 0
     _target_rate = (savings_target / _monthly_income * 100) if _monthly_income > 0 else 0
 
-    kpi1, kpi2, kpi3 = st.columns(3)
-    # BUG-15: Use urgency colors for negative savings rate
-    if _savings_rate < 0:
-        kpi1.metric("Savings Rate", f"{_savings_rate:.0f}%",
-                    delta=f"Target: {_target_rate:.0f}% — over budget!",
-                    delta_color="inverse")
-    else:
-        kpi1.metric("Savings Rate", f"{_savings_rate:.0f}%",
-                    delta=f"Target: {_target_rate:.0f}%",
-                    delta_color="off")
-
-    # Daily Pace
-    if _days_left > 0:
-        if _over_budget > 0:
-            # BUG-16: Show over-budget amount instead of $0/day
-            kpi2.metric("Daily Budget Left", f"Over by ${_over_budget:,.0f}",
-                        delta=f"{_days_left} {'day' if _days_left == 1 else 'days'} left — stop spending!",
-                        delta_color="inverse")
-        else:
-            _daily_left = _discretionary_left / _days_left
-            kpi2.metric("Daily Budget Left", f"${_daily_left:,.0f}/day",
-                        delta=f"{_days_left} {'day' if _days_left == 1 else 'days'} left",
-                        delta_color="off")
-    else:
-        kpi2.metric("Month Status", "Complete" if (date.today().year, date.today().month) != (_sel_year, _sel_month) else "Today")
-
-    # Savings Streak
+    # ── KPI strip: compact single-row on mobile ──
     try:
         _streak = models.compute_savings_streak(conn, savings_target)
     except Exception:
         _streak = 0
-    kpi3.metric("Savings Streak", f"{_streak} mo" if _streak > 0 else "0",
-                delta="consecutive months on target" if _streak > 0 else "Build your streak!",
-                delta_color="off")
+
+    # Savings rate
+    _rate_color = "#ef4444" if _savings_rate < 0 else "#22c55e" if _savings_rate >= _target_rate else "#f59e0b"
+    _rate_val = f"{_savings_rate:.0f}%"
+
+    # Daily budget
+    if _days_left > 0:
+        if _over_budget > 0:
+            _daily_val = f"-${_over_budget:,.0f}"
+            _daily_color = "#ef4444"
+            _daily_sub = f"{_days_left}d left"
+        else:
+            _daily_left = _discretionary_left / _days_left
+            _daily_val = f"${_daily_left:,.0f}/d"
+            _daily_color = "#22c55e" if _daily_left > 50 else "#f59e0b"
+            _daily_sub = f"{_days_left}d left"
+    else:
+        _daily_val = "—"
+        _daily_color = "#64748b"
+        _daily_sub = "done"
+
+    # Streak
+    _streak_val = f"{_streak}mo" if _streak > 0 else "0"
+    _streak_color = "#22c55e" if _streak > 0 else "#94a3b8"
+
+    _kpi_html = (
+        f'<div style="display:flex;justify-content:space-between;'
+        f'background:linear-gradient(135deg,#f8f9fb,#f0f2f6);'
+        f'border:1px solid #e2e6ed;border-radius:12px;padding:10px 16px;'
+        f'margin:8px 0;">'
+        # Savings Rate
+        f'<div style="text-align:center;flex:1;">'
+        f'<div style="font-size:10px;color:#6b7280;text-transform:uppercase;'
+        f'letter-spacing:0.5px;font-weight:600;">Rate</div>'
+        f'<div style="font-size:20px;font-weight:700;color:{_rate_color};">'
+        f'{_rate_val}</div>'
+        f'<div style="font-size:10px;color:#94a3b8;">target {_target_rate:.0f}%</div>'
+        f'</div>'
+        # Divider
+        f'<div style="width:1px;background:#e2e6ed;margin:4px 0;"></div>'
+        # Daily Budget
+        f'<div style="text-align:center;flex:1;">'
+        f'<div style="font-size:10px;color:#6b7280;text-transform:uppercase;'
+        f'letter-spacing:0.5px;font-weight:600;">Daily</div>'
+        f'<div style="font-size:20px;font-weight:700;color:{_daily_color};">'
+        f'{_daily_val}</div>'
+        f'<div style="font-size:10px;color:#94a3b8;">{_daily_sub}</div>'
+        f'</div>'
+        # Divider
+        f'<div style="width:1px;background:#e2e6ed;margin:4px 0;"></div>'
+        # Streak
+        f'<div style="text-align:center;flex:1;">'
+        f'<div style="font-size:10px;color:#6b7280;text-transform:uppercase;'
+        f'letter-spacing:0.5px;font-weight:600;">Streak</div>'
+        f'<div style="font-size:20px;font-weight:700;color:{_streak_color};">'
+        f'{_streak_val}</div>'
+        f'<div style="font-size:10px;color:#94a3b8;">'
+        f'{"on target" if _streak > 0 else "build it!"}</div>'
+        f'</div>'
+        f'</div>'
+    )
+    st.markdown(_kpi_html, unsafe_allow_html=True)
 
     # ── 3. SPENDING COACH — Claude-driven summary + category cards ────
     budget_coach.render(
