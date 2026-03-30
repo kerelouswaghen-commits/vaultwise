@@ -14,8 +14,12 @@ from shared.state import escape_dollars, get_conn
 
 def render_savings_gauge(month_display, saved, gauge_color, status_icon, status_text,
                          total_outflow, budget_limit, savings_target, effective_fixed,
-                         txn_discretionary, spent_pct, compact=False, txn_fixed=None):
+                         txn_discretionary, spent_pct, compact=False, txn_fixed=None,
+                         _day_of_month=None):
     """Render the savings goal gauge. Use compact=True for the sidebar widget."""
+    if _day_of_month is None:
+        from datetime import date
+        _day_of_month = date.today().day
     D = "$"
     if compact:
         # Sidebar mini widget
@@ -59,9 +63,9 @@ def render_savings_gauge(month_display, saved, gauge_color, status_icon, status_
         f'<span>{D}{total_outflow:,.0f} of {D}{budget_limit:,.0f} budget</span>'
         f'<span>Target: {D}{savings_target:,}/mo</span>'
         f'</div>'
-        f'<div class="gauge-detail" style="color:#9ca3af;margin-top:2px;">Fixed: {D}{effective_fixed:,.0f} · Disc: {D}{txn_discretionary:,.0f}</div>'
-        + (f'<div style="font-size:0.72rem;color:#b45309;margin-top:2px;">Includes {D}{effective_fixed - txn_fixed:,.0f} estimated fixed costs not yet in transactions</div>'
-           if txn_fixed is not None and effective_fixed > txn_fixed else '')
+        f'<div class="gauge-detail" style="color:#9ca3af;margin-top:2px;">Fixed: {D}{effective_fixed:,.0f} · Spending: {D}{txn_discretionary:,.0f}</div>'
+        + (f'<div style="font-size:0.72rem;color:#b45309;margin-top:2px;">Includes {D}{effective_fixed - txn_fixed:,.0f} in fixed bills not yet posted</div>'
+           if txn_fixed is not None and effective_fixed > txn_fixed and _day_of_month <= 15 else '')
         + f'<div style="font-size:clamp(0.75rem,2.5vw,0.85rem);color:{gauge_color};font-weight:600;margin-top:6px;">{status_text}</div>'
         f'</div>'
     )

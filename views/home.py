@@ -77,7 +77,9 @@ def home_page():
     # Get this month's data
     _raw_breakdown = database.get_monthly_category_breakdown(conn, selected_month)
     _active_cats_dash = category_engine.get_active_categories(conn)
-    month_breakdown = [c for c in _raw_breakdown if c["category"] in _active_cats_dash]
+    month_breakdown = [c for c in _raw_breakdown
+                       if c["category"] in _active_cats_dash
+                       and c["category"] not in config.EXCLUDED_CATEGORIES]
     if not month_breakdown:
         st.info(f"No spending data for {month_display}.")
         conn.close()
@@ -96,8 +98,15 @@ def home_page():
         _income_keys = list(config.INCOME.keys())
         _label_1 = config.INCOME_LABELS.get(_income_keys[0], {}).get("bonus_label", "Include primary bonus") if _income_keys else "Include primary bonus"
         _label_2 = config.INCOME_LABELS.get(_income_keys[1] if len(_income_keys) > 1 else "", {}).get("bonus_label", "Include secondary bonus")
-        _kero_bonus_on = _bonus_col1.checkbox(_label_1, value=False, key="dash_kero_bonus")
-        _maggie_bonus_on = _bonus_col2.checkbox(_label_2, value=False, key="dash_maggie_bonus")
+        _bonus1_default = database.get_setting(conn, "bonus_toggle_1", "0") == "1"
+        _bonus2_default = database.get_setting(conn, "bonus_toggle_2", "0") == "1"
+        _kero_bonus_on = _bonus_col1.checkbox(_label_1, value=_bonus1_default, key="dash_kero_bonus")
+        _maggie_bonus_on = _bonus_col2.checkbox(_label_2, value=_bonus2_default, key="dash_maggie_bonus")
+        # Persist toggle state
+        if _kero_bonus_on != _bonus1_default:
+            database.set_setting(conn, "bonus_toggle_1", "1" if _kero_bonus_on else "0")
+        if _maggie_bonus_on != _bonus2_default:
+            database.set_setting(conn, "bonus_toggle_2", "1" if _maggie_bonus_on else "0")
     _kero_bonus_val = _income_data.get("kero_bonus", 0) if isinstance(_income_data, dict) else 0
     _maggie_bonus_val = _income_data.get("maggie_bonus", 0) if isinstance(_income_data, dict) else 0
     if not _kero_bonus_on:
@@ -200,7 +209,7 @@ def home_page():
     if _days_left > 0:
         _daily_left = _discretionary_left / _days_left
         kpi2.metric("Daily Budget Left", f"${_daily_left:,.0f}/day",
-                    delta=f"{_days_left} days left",
+                    delta=f"{_days_left} {'day' if _days_left == 1 else 'days'} left",
                     delta_color="off")
     else:
         kpi2.metric("Month Status", "Complete" if (date.today().year, date.today().month) != (_sel_year, _sel_month) else "Today")

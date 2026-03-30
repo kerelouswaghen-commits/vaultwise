@@ -255,7 +255,8 @@ RESPOND WITH STRICT JSON ONLY (no markdown):
 }}
 
 RULES:
-- Only suggest cutting DISCRETIONARY spending (not fixed bills)
+- Only suggest cutting DISCRETIONARY spending (not fixed bills like mortgage, daycare, loans, or utilities)
+- Never suggest returning past purchases or deferring essential bills
 - Reference ACTUAL merchants and ACTUAL amounts from the transactions
-- Be realistic — don't suggest returning groceries already eaten
+- Be realistic — focus on reducing remaining spending this month and planning next month
 - Rank by largest dollar recovery first"""

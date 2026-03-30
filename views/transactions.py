@@ -95,26 +95,7 @@ def transactions_page():
             month_labels = [datetime.strptime(m, "%Y-%m").strftime("%b %y") for m in all_months_range]
             completeness_pct = (filled_cells / total_cells * 100) if total_cells > 0 else 0
 
-            st.markdown("##### Coverage Heatmap")
-            st.caption(f"**{completeness_pct:.0f}%** complete ({filled_cells} of {total_cells} account-months)")
-
-            fig_heat = go.Figure(data=go.Heatmap(
-                z=z_data, x=month_labels, y=acct_labels,
-                colorscale=[[0, '#ef4444'], [1, '#22c55e']],
-                showscale=True,
-                colorbar=dict(title="", tickvals=[0, 1], ticktext=["Missing", "Has Data"], len=0.5, thickness=12),
-                hovertemplate="<b>%{y}</b><br>%{x}<br>%{customdata}<extra></extra>",
-                customdata=[["Has data" if cell == 1 else "Missing" for cell in row] for row in z_data],
-                xgap=3, ygap=4,
-            ))
-            tick_interval = max(1, len(month_labels) // 15)
-            fig_heat.update_layout(
-                **CHART_LAYOUT,
-                height=max(180, 55 * len(all_acct_ids)),
-                xaxis=dict(side="top", tickangle=-45, dtick=tick_interval),
-                yaxis=dict(autorange="reversed"),
-            )
-            st.plotly_chart(fig_heat, width="stretch", config={"displayModeBar": False})
+            st.caption(f"**{completeness_pct:.0f}%** coverage ({filled_cells} of {total_cells} account-months)")
 
             missing_months = database.get_missing_months(conn)
             if missing_months:

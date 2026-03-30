@@ -152,6 +152,22 @@ with st.sidebar:
             )
         except Exception:
             st.metric("Savings Target", f"${savings_target:,}/mo")
+    # Sync Now button
+    if database.get_setting(conn, "monarch_enabled", "0") == "1":
+        if st.button("🔄 Sync Now", use_container_width=True, key="sidebar_sync"):
+            try:
+                import monarch_sync
+                result = monarch_sync.sync_transactions(conn)
+                if result["new"] > 0:
+                    st.success(f"{result['new']} new transactions synced!")
+                    st.rerun()
+                else:
+                    st.info("Already up to date.")
+                if result.get("errors"):
+                    st.warning(result["errors"][0])
+            except Exception as e:
+                st.error(f"Sync failed: {str(e)[:80]}")
+
     conn.close()
 
 

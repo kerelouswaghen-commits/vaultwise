@@ -374,9 +374,9 @@ def settings_page():
             # Big charges
             big_charges = [t for t in week_txns if t["amount"] < -150]
             if big_charges:
-                st.markdown("#### Notable Charges (> \\$150)")
+                st.markdown("#### Notable Charges (> $150)")
                 for t in sorted(big_charges, key=lambda x: x["amount"]):
-                    st.markdown(f"- **\\${abs(t['amount']):,.0f}** — {t['description']} ({t['category']}) on {t['date']}")
+                    st.markdown(f"- **${abs(t['amount']):,.0f}** — {t['description']} ({t['category']}) on {t['date']}")
 
             # Prophet forecasts
             st.divider()
