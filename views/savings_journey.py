@@ -153,18 +153,21 @@ def savings_journey_page():
         _current = max(0, min(_current, typical))
         _color = _CAT_COLORS[i % len(_CAT_COLORS)]
 
-        # Category header: name on left, typical + badge on right
+        # Category header row 1: name on left, typical on right
+        # Row 2 (if cut): badge on right — avoids overlap with slider thumb value
         _cut_preview = typical - _current
-        _badge = ""
+        _badge_row = ""
         if _cut_preview > 0:
-            _badge = (
+            _badge_row = (
+                f'<div style="display:flex;justify-content:flex-end;'
+                f'margin-top:-4px;margin-bottom:-6px;">'
                 f'<span style="font-size:11px;font-weight:600;color:#0d9488;'
-                f'background:#f0fdfa;padding:2px 6px;border-radius:4px;'
-                f'margin-left:6px;">−${_cut_preview:,}</span>'
+                f'background:#f0fdfa;padding:2px 6px;border-radius:4px;">'
+                f'−${_cut_preview:,}</span></div>'
             )
         st.markdown(
             f'<div style="display:flex;align-items:center;'
-            f'justify-content:space-between;margin-bottom:-10px;'
+            f'justify-content:space-between;margin-bottom:-4px;'
             f'margin-top:8px;">'
             f'<div style="display:flex;align-items:center;">'
             f'<span style="width:10px;height:10px;border-radius:50%;'
@@ -172,10 +175,9 @@ def savings_journey_page():
             f'flex-shrink:0;"></span>'
             f'<span style="font-size:13px;font-weight:500;color:#1a1a2e;">'
             f'{cat}</span></div>'
-            f'<div style="display:flex;align-items:center;">'
             f'<span style="font-size:11px;color:#94a3b8;">'
-            f'typical ${typical:,}</span>'
-            f'{_badge}</div></div>',
+            f'typical ${typical:,}</span></div>'
+            f'{_badge_row}',
             unsafe_allow_html=True,
         )
 
@@ -206,28 +208,28 @@ def savings_journey_page():
                 _color = _CAT_COLORS[i % len(_CAT_COLORS)]
 
                 _cut_preview = typical - _current
-                _badge = ""
+                _badge_row = ""
                 if _cut_preview > 0:
-                    _badge = (
+                    _badge_row = (
+                        f'<div style="display:flex;justify-content:flex-end;'
+                        f'margin-top:-4px;margin-bottom:-6px;">'
                         f'<span style="font-size:11px;font-weight:600;'
                         f'color:#0d9488;background:#f0fdfa;padding:2px 6px;'
-                        f'border-radius:4px;margin-left:6px;">'
-                        f'−${_cut_preview:,}</span>'
+                        f'border-radius:4px;">−${_cut_preview:,}</span></div>'
                     )
                 st.markdown(
                     f'<div style="display:flex;align-items:center;'
                     f'justify-content:space-between;'
-                    f'margin-bottom:-10px;margin-top:4px;">'
+                    f'margin-bottom:-4px;margin-top:4px;">'
                     f'<div style="display:flex;align-items:center;">'
                     f'<span style="width:8px;height:8px;border-radius:50%;'
                     f'background:{_color};display:inline-block;'
                     f'margin-right:6px;"></span>'
                     f'<span style="font-size:12px;color:#1a1a2e;">'
                     f'{cat}</span></div>'
-                    f'<div style="display:flex;align-items:center;">'
                     f'<span style="font-size:10px;color:#94a3b8;">'
-                    f'typical ${typical:,}</span>'
-                    f'{_badge}</div></div>',
+                    f'typical ${typical:,}</span></div>'
+                    f'{_badge_row}',
                     unsafe_allow_html=True,
                 )
 
