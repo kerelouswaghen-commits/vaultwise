@@ -15,6 +15,10 @@ def inject_css():
     [data-testid="stMetricValue"] { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; }
     [data-testid="stMetricLabel"] { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
 
+    /* Hide slider thumb value labels to prevent overlap with custom labels */
+    [data-testid="stSlider"] [data-testid="stThumbValue"] { display: none; }
+    [data-testid="stSlider"] .st-emotion-cache-1dx1gwv { display: none; }
+
     /* Sidebar */
     section[data-testid="stSidebar"] > div { padding-top: 1rem; }
 
