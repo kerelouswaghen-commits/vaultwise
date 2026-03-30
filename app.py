@@ -167,24 +167,21 @@ with st.sidebar:
 # TOP NAVIGATION BAR — always visible, mobile-friendly
 # ═══════════════════════════════════════════════════════════════════════════
 if "active_page" not in st.session_state:
-    st.session_state.active_page = "Home"
+    st.session_state.active_page = "🏠 Home"
 
-_nav_options = ["Home", "Plan", "Txns", "Setup"]
-_nav_to_page = {"Home": "Home", "Txns": "Transactions", "Plan": "Savings Journey", "Setup": "Settings"}
-_nav_icons = {"Home": "🏠", "Plan": "🎯", "Txns": "💳", "Setup": "⚡"}
+_nav_options = ["🏠 Home", "🎯 Plan", "💳 Txns", "⚡ Setup"]
+_nav_to_page = {
+    "🏠 Home": "Home", "💳 Txns": "Transactions",
+    "🎯 Plan": "Savings Journey", "⚡ Setup": "Settings",
+}
 
-# Custom centered nav bar via HTML + buttons
-_nav_cols = st.columns(len(_nav_options))
-for _idx, _opt in enumerate(_nav_options):
-    _is_active = st.session_state.active_page == _opt
-    if _nav_cols[_idx].button(
-        f"{_nav_icons[_opt]} {_opt}",
-        key=f"nav_{_opt}",
-        use_container_width=True,
-        type="primary" if _is_active else "secondary",
-    ):
-        st.session_state.active_page = _opt
-        st.rerun()
+_selected_nav = st.segmented_control(
+    "nav", _nav_options,
+    default=st.session_state.active_page,
+    label_visibility="collapsed",
+)
+if _selected_nav:
+    st.session_state.active_page = _selected_nav
 
 
 # ═══════════════════════════════════════════════════════════════════════════

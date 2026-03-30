@@ -32,17 +32,14 @@ def inject_css():
     }
     .stTabs [aria-selected="true"] { background: white !important; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
-    /* Nav buttons — compact row */
-    div[data-testid="stHorizontalBlock"]:has(button[kind="primary"]),
-    div[data-testid="stHorizontalBlock"]:has(button[kind="secondary"]) {
-        gap: 6px !important;
-    }
-    div[data-testid="stHorizontalBlock"] button[kind="primary"],
-    div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
-        padding: 6px 4px !important;
+    /* Segmented nav — compact on mobile */
+    [data-testid="stSegmentedControl"] button {
+        padding: 6px 8px !important;
         font-size: 13px !important;
-        min-height: 36px !important;
-        border-radius: 10px !important;
+        min-height: 32px !important;
+    }
+    [data-testid="stSegmentedControl"] {
+        gap: 2px !important;
     }
 
     /* Clean expanders */
