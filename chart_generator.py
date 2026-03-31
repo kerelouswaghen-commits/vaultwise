@@ -203,6 +203,90 @@ def generate_objective_progress_chart(objectives: list[dict]) -> bytes:
     return _to_png(fig, width=800, height=max(300, len(labels) * 60 + 100))
 
 
+def generate_month_progress_chart(disc_budget: float, disc_spent: float,
+                                   saved: float, target: float,
+                                   weekly_breakdown=None) -> bytes:
+    """Simple month progress chart: budget consumption + savings status."""
+    fig = go.Figure()
+
+    # Spending bar
+    remaining = max(disc_budget - disc_spent, 0)
+    over = max(disc_spent - disc_budget, 0)
+
+    fig.add_trace(go.Bar(
+        y=["Spending"], x=[min(disc_spent, disc_budget)],
+        orientation="h", name="Spent",
+        marker_color=COLORS["red"] if over > 0 else COLORS["orange"],
+        text=[f"${disc_spent:,.0f}"], textposition="inside",
+        textfont=dict(size=16, color="white"),
+    ))
+    if remaining > 0:
+        fig.add_trace(go.Bar(
+            y=["Spending"], x=[remaining],
+            orientation="h", name="Remaining",
+            marker_color="#e8e8e8",
+            text=[f"${remaining:,.0f} left"], textposition="inside",
+            textfont=dict(size=14, color="#666"),
+        ))
+    if over > 0:
+        fig.add_trace(go.Bar(
+            y=["Spending"], x=[over],
+            orientation="h", name="Over budget",
+            marker_color="#c0392b",
+            text=[f"+${over:,.0f} over"], textposition="inside",
+            textfont=dict(size=14, color="white"),
+        ))
+
+    # Savings bar
+    if saved >= target:
+        fig.add_trace(go.Bar(
+            y=["Savings"], x=[saved],
+            orientation="h", name="Saved",
+            marker_color=COLORS["green"],
+            text=[f"${saved:,.0f} saved"], textposition="inside",
+            textfont=dict(size=16, color="white"),
+        ))
+    elif saved > 0:
+        fig.add_trace(go.Bar(
+            y=["Savings"], x=[saved],
+            orientation="h", name="Saved",
+            marker_color=COLORS["orange"],
+            text=[f"${saved:,.0f}"], textposition="inside",
+            textfont=dict(size=14, color="white"),
+        ))
+        fig.add_trace(go.Bar(
+            y=["Savings"], x=[target - saved],
+            orientation="h", name="Gap",
+            marker_color="#e8e8e8",
+            text=[f"${target - saved:,.0f} to go"], textposition="inside",
+            textfont=dict(size=14, color="#666"),
+        ))
+    else:
+        fig.add_trace(go.Bar(
+            y=["Savings"], x=[abs(saved)],
+            orientation="h", name="In the red",
+            marker_color=COLORS["red"],
+            text=[f"-${abs(saved):,.0f}"], textposition="inside",
+            textfont=dict(size=16, color="white"),
+        ))
+
+    # Savings target line
+    fig.add_vline(x=target, line_dash="dash", line_color=COLORS["dark"],
+                  annotation_text=f"Target: ${target:,}", annotation_position="top")
+
+    fig.update_layout(
+        title="Month at a Glance",
+        barmode="stack",
+        height=250,
+        xaxis=dict(title="Amount ($)", showgrid=True),
+        yaxis=dict(categoryorder="array", categoryarray=["Savings", "Spending"]),
+        showlegend=False,
+        margin=dict(l=80, r=40, t=60, b=40),
+        font=dict(size=14),
+    )
+    return _to_png(fig, width=800, height=250)
+
+
 def _empty_chart(message: str) -> bytes:
     """Generate a placeholder chart with a message."""
     fig = go.Figure()

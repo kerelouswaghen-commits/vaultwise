@@ -14,6 +14,16 @@ import database
 import config
 
 
+def _get_month_phase(d: date) -> str:
+    """Determine report phase based on day of month."""
+    if d.day <= 7:
+        return "start"    # Week 1: fresh start, set the plan
+    elif d.day <= 21:
+        return "middle"   # Weeks 2-3: track progress, course-correct
+    else:
+        return "end"      # Week 4+: final scorecard
+
+
 def gather_report_data(conn, report_date: Optional[date] = None, period: str = "weekly") -> dict:
     """Pull transactions for the configured period, MTD totals, objective progress, alerts.
     period: 'weekly' (7 days), 'biweekly' (14 days), 'monthly' (month to date)
@@ -96,8 +106,16 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
     monthly_income = income_data["total_income"] if isinstance(income_data, dict) else income_data
 
     fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
-    _fixed_cats = {"Housing & Utilities", "Debt Payments", "Giving & Church", "Family Support",
-                   "Transportation", "Childcare & Education", "Phone & Internet", "Car Insurance"}
+    # Derive fixed categories from FIXED_BILL_GROUPS config (authoritative source)
+    _fixed_cats = set()
+    for _group_items in getattr(config, "FIXED_BILL_GROUPS", {}).values():
+        _fixed_cats.update(_group_items)
+    # Also include the common transaction-level category names that map to fixed bills
+    _fixed_cats.update({
+        "Housing & Utilities", "Debt Payments", "Giving & Church", "Family Support",
+        "Transportation", "Childcare & Education", "Phone & Internet", "Car Insurance",
+        "Daycare", "Church & Family", "Internet",
+    })
     txn_fixed = sum(abs(c.get("total", 0)) for c in mtd_breakdown if c.get("category") in _fixed_cats)
     txn_discretionary = mtd_total - txn_fixed
     effective_fixed = max(fixed_costs, txn_fixed)
@@ -134,21 +152,51 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
             except Exception:
                 pass
 
-    # Budget status: fresh computation
+    # Budget status: fresh computation (exclude internal transfers)
+    _excl = config.EXCLUDED_CATEGORIES
     budget_statuses = {}
     try:
         for s in analytics.compute_budget_status(conn):
-            budget_statuses[s.category] = s
+            if s.category not in _excl:
+                budget_statuses[s.category] = s
     except Exception:
         pass
 
     # Top merchants this month (exclude transfers/payments)
     try:
         _all_merchants = database.get_merchant_spending(conn, months=1)
-        _excl = config.EXCLUDED_CATEGORIES
         top_merchants = [m for m in _all_merchants if m.get("category") not in _excl][:10]
     except Exception:
         top_merchants = []
+
+    # ── Phase-aware data for redesigned report ──────────────────
+    month_phase = _get_month_phase(today)
+    week_number = (today.day - 1) // 7 + 1
+    weeks_in_month = (days_in_month - 1) // 7 + 1
+
+    # Week-by-week cumulative breakdown
+    weekly_breakdown = database.get_month_weekly_breakdown(
+        conn, today.year, today.month, exclude_categories=_excl
+    )
+
+    # This week's top merchants (not monthly)
+    week_merchants = database.get_weekly_merchants(
+        conn, week_ago.isoformat(), today.isoformat(), exclude_categories=_excl
+    )[:5]
+
+    # Last month's over-budget categories (for "start" phase advice)
+    last_month_overbudget = []
+    if month_phase == "start":
+        try:
+            prev_month = today.month - 1 if today.month > 1 else 12
+            prev_year = today.year if today.month > 1 else today.year - 1
+            for s in analytics.compute_budget_status(conn, f"{prev_year}-{prev_month:02d}"):
+                if s.category in _excl:
+                    continue
+                if hasattr(s, "status") and s.status in ("over", "elevated"):
+                    last_month_overbudget.append({"category": s.category, "status": s.status})
+        except Exception:
+            pass
 
     return {
         "report_date": today.isoformat(),
@@ -172,10 +220,19 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
         "savings_target": savings_target_val,
         "savings_rate": savings_rate,
         "days_left": days_left,
+        "days_in_month": days_in_month,
         "daily_budget": daily_budget,
+        "disc_budget": disc_budget,
         "trends": trends,
         "budget_statuses": budget_statuses,
         "top_merchants": top_merchants,
+        # Phase-aware data
+        "month_phase": month_phase,
+        "week_number": week_number,
+        "weeks_in_month": weeks_in_month,
+        "weekly_breakdown": weekly_breakdown,
+        "week_merchants": week_merchants,
+        "last_month_overbudget": last_month_overbudget,
     }
 
 

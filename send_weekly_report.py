@@ -66,12 +66,12 @@ def main():
     # Format the report (data-driven, no Claude needed)
     summary_text = format_weekly_report_html(report_data)
 
-    # Generate charts
+    # Generate charts (focused: weekly spending, monthly trend, month progress)
     print("📊 Generating charts...")
     charts = []
     try:
-        # Weekly spending
-        this_week = database.get_weekly_spending(conn)
+        # Weekly spending (filtered — excludes transfers/payments)
+        this_week = database.get_weekly_spending(conn, exclude_categories=config.EXCLUDED_CATEGORIES)
         if this_week.get("categories"):
             charts.append((
                 chart_generator.generate_weekly_spending_chart(this_week),
@@ -86,20 +86,16 @@ def main():
                 "Monthly Spending Trend"
             ))
 
-        # Category breakdown
-        date_range = database.get_date_range(conn)
-        if date_range[0]:
-            breakdown = database.get_category_breakdown(conn, date_range[0], date_range[1])
-            if breakdown:
-                charts.append((
-                    chart_generator.generate_category_pie_chart(breakdown),
-                    "Spending by Category (All Time)"
-                ))
-
-        # Cash flow projection (always available)
+        # Month progress bar (budget consumption + savings status)
         charts.append((
-            chart_generator.generate_cashflow_chart(),
-            "Cash Flow Projection"
+            chart_generator.generate_month_progress_chart(
+                disc_budget=report_data.get("disc_budget", 0),
+                disc_spent=report_data.get("txn_discretionary", 0),
+                saved=report_data.get("saved", 0),
+                target=report_data.get("savings_target", 2000),
+                weekly_breakdown=report_data.get("weekly_breakdown"),
+            ),
+            "Month at a Glance"
         ))
 
         print(f"   Generated {len(charts)} charts")

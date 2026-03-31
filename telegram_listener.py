@@ -144,10 +144,10 @@ def _trigger_weekly_report(token, conn):
         )
         report_data["action_items"] = claude_report.get("action_items", [])
 
-        # Generate charts
+        # Generate charts (filtered — excludes transfers/payments)
         charts = []
         try:
-            this_week = database.get_weekly_spending(conn)
+            this_week = database.get_weekly_spending(conn, exclude_categories=config.EXCLUDED_CATEGORIES)
             if this_week.get("categories"):
                 charts.append((
                     chart_generator.generate_weekly_spending_chart(this_week),
@@ -159,6 +159,16 @@ def _trigger_weekly_report(token, conn):
                     chart_generator.generate_monthly_trend_chart(trend),
                     "Monthly Spending Trend",
                 ))
+            charts.append((
+                chart_generator.generate_month_progress_chart(
+                    disc_budget=report_data.get("disc_budget", 0),
+                    disc_spent=report_data.get("txn_discretionary", 0),
+                    saved=report_data.get("saved", 0),
+                    target=report_data.get("savings_target", 2000),
+                    weekly_breakdown=report_data.get("weekly_breakdown"),
+                ),
+                "Month at a Glance",
+            ))
         except Exception as e:
             print(f"Chart generation failed: {e}")
 
@@ -486,11 +496,96 @@ def _handle_help_command(token, chat_id):
         "<b>Commands:</b>\n"
         "/status \u2014 Weekly upload progress\n"
         "/report \u2014 Force generate weekly report\n"
+        "/reminder \u2014 Turn upload reminders on/off\n"
         "/help \u2014 This message\n\n"
         "<b>To upload:</b> Just send a PDF or CSV file from Chase.\n\n"
         "<b>Ask anything:</b> Type a question about your finances "
         "and I'll answer using your actual spending data."
     )
+
+
+def _handle_reminder_command(token, chat_id):
+    """Show reminder toggle with inline keyboard button."""
+    conn = database.get_connection(DB_PATH)
+    enabled = database.get_setting(conn, "weekly_reminder_enabled", "true") == "true"
+    conn.close()
+
+    status_text = "ON \u2705" if enabled else "OFF \U0001f515"
+    button_text = "Turn OFF \U0001f515" if enabled else "Turn ON \u2705"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": button_text, "callback_data": "reminder_toggle"}
+        ]]
+    }
+
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": f"<b>Weekly upload reminders: {status_text}</b>\n\n"
+                        f"When ON, you'll get daily reminders until all statements are uploaded.",
+                "parse_mode": "HTML",
+                "reply_markup": keyboard,
+            },
+            timeout=30,
+        )
+    except Exception as e:
+        print(f"Failed to send reminder command: {e}")
+
+
+def _handle_reminder_callback(token, callback_query):
+    """Toggle reminder setting and update the inline button."""
+    chat_id = str(callback_query["message"]["chat"]["id"])
+    message_id = callback_query["message"]["message_id"]
+    callback_id = callback_query["id"]
+
+    conn = database.get_connection(DB_PATH)
+    current = database.get_setting(conn, "weekly_reminder_enabled", "true")
+    new_value = "false" if current == "true" else "true"
+    database.set_setting(conn, "weekly_reminder_enabled", new_value)
+    conn.close()
+
+    enabled = new_value == "true"
+    status_text = "ON \u2705" if enabled else "OFF \U0001f515"
+    button_text = "Turn OFF \U0001f515" if enabled else "Turn ON \u2705"
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": button_text, "callback_data": "reminder_toggle"}
+        ]]
+    }
+
+    # Update the message in-place
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/editMessageText",
+            json={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": f"<b>Weekly upload reminders: {status_text}</b>\n\n"
+                        f"When ON, you'll get daily reminders until all statements are uploaded.",
+                "parse_mode": "HTML",
+                "reply_markup": keyboard,
+            },
+            timeout=30,
+        )
+    except Exception as e:
+        print(f"Failed to update reminder message: {e}")
+
+    # Dismiss the loading spinner
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+            json={
+                "callback_query_id": callback_id,
+                "text": f"Reminders {'enabled' if enabled else 'disabled'}",
+            },
+            timeout=10,
+        )
+    except Exception:
+        pass
 
 
 def _try_autodetect_maggie(token, chat_id, from_name, message_text):
@@ -538,6 +633,17 @@ def poll_updates(token, allowed_chat_id):
 
             for update in data.get("result", []):
                 offset = update["update_id"] + 1
+
+                # Handle inline keyboard callbacks (e.g. reminder toggle)
+                callback_query = update.get("callback_query")
+                if callback_query:
+                    cb_chat_id = str(callback_query.get("message", {}).get("chat", {}).get("id", ""))
+                    if cb_chat_id in allowed_ids:
+                        cb_data = callback_query.get("data", "")
+                        if cb_data == "reminder_toggle":
+                            _handle_reminder_callback(token, callback_query)
+                    continue
+
                 message = update.get("message", {})
                 chat_id = str(message.get("chat", {}).get("id", ""))
                 from_name = message.get("from", {}).get("first_name", "")
@@ -597,6 +703,9 @@ def poll_updates(token, allowed_chat_id):
 
                     elif text_lower == "/report":
                         _handle_report_command(token, chat_id)
+
+                    elif text_lower == "/reminder":
+                        _handle_reminder_command(token, chat_id)
 
                     elif text_lower == "/help":
                         _handle_help_command(token, chat_id)

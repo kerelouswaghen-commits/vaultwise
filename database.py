@@ -980,8 +980,12 @@ def get_merchant_spending(conn, months: int = 3) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_weekly_spending(conn, weeks_back: int = 0) -> dict:
-    """Get spending for a specific week (0=current, 1=last week, etc.)."""
+def get_weekly_spending(conn, weeks_back: int = 0, exclude_categories=None) -> dict:
+    """Get spending for a specific week (0=current, 1=last week, etc.).
+
+    Args:
+        exclude_categories: Category names to filter out (e.g. config.EXCLUDED_CATEGORIES).
+    """
     today = date.today()
     week_end = today - timedelta(days=7 * weeks_back)
     week_start = week_end - timedelta(days=7)
@@ -992,12 +996,71 @@ def get_weekly_spending(conn, weeks_back: int = 0) -> dict:
         GROUP BY category
         ORDER BY total ASC
     """, (week_start.isoformat(), week_end.isoformat())).fetchall()
+    excl = exclude_categories or set()
+    filtered = [r for r in rows if r["category"] not in excl]
     return {
         "start": week_start.isoformat(),
         "end": week_end.isoformat(),
-        "categories": {r["category"]: {"total": r["total"], "count": r["count"]} for r in rows},
-        "total": sum(r["total"] for r in rows),
+        "categories": {r["category"]: {"total": r["total"], "count": r["count"]} for r in filtered},
+        "total": sum(r["total"] for r in filtered),
     }
+
+
+def get_weekly_merchants(conn, start_date: str, end_date: str,
+                         exclude_categories=None) -> list:
+    """Get top merchants by spend for a specific date range."""
+    rows = conn.execute("""
+        SELECT description, COUNT(*) as visits, SUM(amount) as total_spent,
+               category
+        FROM transactions
+        WHERE date >= ? AND date <= ? AND amount < 0
+        GROUP BY description
+        ORDER BY total_spent ASC
+        LIMIT 20
+    """, (start_date, end_date)).fetchall()
+    excl = exclude_categories or set()
+    return [dict(r) for r in rows if r["category"] not in excl]
+
+
+def get_month_weekly_breakdown(conn, year: int, month: int,
+                               exclude_categories=None) -> list:
+    """Split a month's spending into calendar weeks.
+
+    Returns list of dicts: [{week_num, start, end, total, txn_count}, ...]
+    """
+    from calendar import monthrange
+    days_in_month = monthrange(year, month)[1]
+    month_start = date(year, month, 1)
+    excl = exclude_categories or set()
+
+    weeks = []
+    week_num = 1
+    day = 1
+    while day <= days_in_month:
+        wk_start = date(year, month, day)
+        wk_end_day = min(day + 6, days_in_month)
+        wk_end = date(year, month, wk_end_day)
+
+        rows = conn.execute("""
+            SELECT SUM(amount) as total, COUNT(*) as count
+            FROM transactions
+            WHERE date >= ? AND date <= ? AND amount < 0
+              AND category NOT IN ({})
+        """.format(",".join("?" for _ in excl)),
+            (wk_start.isoformat(), wk_end.isoformat(), *excl)
+        ).fetchone()
+
+        weeks.append({
+            "week_num": week_num,
+            "start": wk_start.isoformat(),
+            "end": wk_end.isoformat(),
+            "total": abs(rows["total"]) if rows["total"] else 0,
+            "txn_count": rows["count"] if rows["count"] else 0,
+        })
+        week_num += 1
+        day = wk_end_day + 1
+
+    return weeks
 
 
 # ── Category Analytics Cache ─────────────────────────────────────────────

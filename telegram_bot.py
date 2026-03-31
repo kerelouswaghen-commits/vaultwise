@@ -150,155 +150,199 @@ class TelegramReporter:
 
 
 def format_weekly_report_html(report_data: dict, **_kwargs) -> str:
-    """Data-driven Telegram report mirroring the dashboard's exact metrics."""
+    """Savings-first, grandma-friendly Telegram report.
+
+    Dynamic by week-of-month:
+      - start (day 1-7):   Budget plan, last month's lessons
+      - middle (day 8-21): Progress tracking, course corrections
+      - end (day 22+):     Final scorecard, wins & lessons
+    """
     d = report_data
     from datetime import date
     from calendar import month_name
 
     today = date.fromisoformat(d["report_date"])
-    month_label = f"{month_name[today.month]} {today.year}"
+    month_label = month_name[today.month].upper()
+    year = today.year
+    phase = d.get("month_phase", "middle")
+    week_num = d.get("week_number", 1)
+    weeks_in_month = d.get("weeks_in_month", 4)
 
-    # Core metrics (computed in gather_report_data using same math as dashboard)
+    # Core numbers
     income = d.get("monthly_income", 0)
     fixed = d.get("effective_fixed", 0)
-    disc = d.get("txn_discretionary", 0)
+    disc_spent = d.get("txn_discretionary", 0)
     saved = d.get("saved", 0)
     target = d.get("savings_target", 2000)
-    rate = d.get("savings_rate", 0)
+    disc_budget = d.get("disc_budget", income - fixed - target)
     days_left = d.get("days_left", 0)
+    days_in_month = d.get("days_in_month", 30)
     daily = d.get("daily_budget", 0)
-    gap = saved - target
 
-    # Status (same logic as home.py)
-    if saved >= target:
-        status = f"✅ ON TRACK — ${gap:,.0f} above goal"
-    elif saved > 0:
-        status = f"⚠️ AT RISK — ${abs(gap):,.0f} short of target"
-    else:
-        status = f"🔴 OVER BUDGET — ${abs(saved):,.0f} in the red"
+    lines = []
 
-    target_rate = (target / income * 100) if income > 0 else 0
-
-    lines = [
-        f"<b>💰 VaultWise — {month_label}</b>",
-        "",
-        f"<b>🎯 SAVINGS: {status}</b>",
-        f"  Saved: <b>${saved:,.0f}</b> (target: ${target:,})",
-        f"  Savings rate: <b>{rate:.0f}%</b> (target: {target_rate:.0f}%)",
-    ]
-    if days_left > 0:
-        if daily > 0:
-            lines.append(f"  Daily budget: <b>${daily:,.0f}/day</b> for {days_left} days")
-        else:
-            lines.append(f"  🛑 FREEZE spending for {days_left} days")
+    # ── HEADER ────────────────────────────────────────────────────
+    lines.append(f"<b>{month_label} {year} — Week {week_num} of {weeks_in_month}</b>")
     lines.append("")
 
-    # ── THE MATH ──────────────────────────────────────────────────
-    lines.append("<b>💵 THE MATH</b>")
-    lines.append(f"  Income: ${income:,.0f}")
-    lines.append(f"  Fixed bills: ${fixed:,.0f}")
-    lines.append(f"  Discretionary: ${disc:,.0f}")
-    gap_text = f"+${gap:,.0f} above target" if gap >= 0 else f"${gap:,.0f} vs target"
-    lines.append(f"  <b>Saved: ${saved:,.0f}</b> ({gap_text})")
+    # ── SCOREBOARD (always shown — the core mental model) ─────────
+    lines.append(f"<b>SAVINGS GOAL: ${target:,}/mo</b>")
+    lines.append("")
+    lines.append(f"  Income:         ${income:,.0f}")
+    lines.append(f"  Fixed bills:    ${fixed:,.0f}")
+    lines.append(f"  Savings goal:   ${target:,.0f}")
+    lines.append(f"                  ────────")
+    lines.append(f"  Spending money: <b>${disc_budget:,.0f}</b>")
     lines.append("")
 
-    # ── CATEGORIES BY SEVERITY ────────────────────────────────────
-    trends = d.get("trends", {})
-    budget_statuses = d.get("budget_statuses", {})
-    breakdown = d.get("mtd_breakdown", [])
-
-    dir_icons = {"rising": "↑", "falling": "↓", "stable": "→"}
-
-    critical = []
-    wins = []
-    watch = []
-
-    for cat_data in sorted(breakdown, key=lambda c: abs(c.get("total", 0)), reverse=True):
-        cat = cat_data.get("category", "")
-        spent = abs(cat_data.get("total", 0))
-        if spent < 10:
-            continue
-
-        trend = trends.get(cat)
-        bs = budget_statuses.get(cat)
-        if not trend:
-            continue
-
-        # Handle both dict (cached) and TrendResult (dataclass) formats
-        if isinstance(trend, dict):
-            mean = trend.get("mean", 0)
-            pct = trend.get("pct_vs_mean", 0)
-            direction = dir_icons.get(trend.get("direction", "stable"), "→")
-            severity = trend.get("severity", "normal")
-        else:
-            mean = trend.mean
-            pct = trend.pct_vs_mean
-            direction = dir_icons.get(trend.direction, "→")
-            severity = trend.severity
-
-        if pct > 0:
-            pct_text = f"+{pct:.0f}% vs ${mean:,.0f} avg"
-        else:
-            pct_text = f"{pct:.0f}% vs ${mean:,.0f} avg"
-
-        entry = f"  • {cat}: <b>${spent:,.0f}</b> ({pct_text}) {direction}"
-
-        bs_status = (bs.status if hasattr(bs, "status") else bs.get("status", "")) if bs else ""
-        if severity in ("critical", "warning") or bs_status in ("over", "elevated"):
-            critical.append(entry)
-        elif pct < -15 and mean > 50:
-            saving = mean - spent
-            wins.append(f"  • {cat}: <b>${spent:,.0f}</b> ({pct_text}) — saving ${saving:,.0f}/mo")
-        elif pct > 5:
-            watch.append(entry)
-
-    if critical:
-        lines.append("<b>🔴 NEEDS ATTENTION</b>")
-        lines.extend(critical[:5])
-        lines.append("")
-
-    if wins:
-        lines.append("<b>💪 BIG WINS</b>")
-        lines.extend(wins[:5])
-        lines.append("")
-
-    if watch:
-        lines.append("<b>⚠️ WATCH</b>")
-        lines.extend(watch[:3])
-        lines.append("")
-
-    # ── THIS WEEK ─────────────────────────────────────────────────
-    week_spent = abs(d.get("week_spending_total", 0))
-    week_count = d.get("week_txn_count", 0)
-    if week_spent > 0:
-        lines.append(f"<b>📋 THIS WEEK:</b> ${week_spent:,.0f} spent ({week_count} transactions)")
-        top_merchants = d.get("top_merchants", [])
-        if top_merchants:
-            merch_parts = []
-            for m in top_merchants[:5]:
-                name = m.get("description", "?")
-                total = abs(m.get("total_spent", 0) or m.get("total", 0))
-                if total > 0:
-                    merch_parts.append(f"{name} ${total:,.0f}")
-            if merch_parts:
-                lines.append(f"  Top: {', '.join(merch_parts)}")
-        lines.append("")
-
-    # ── BOTTOM LINE ───────────────────────────────────────────────
-    lines.append("<b>🔥 BOTTOM LINE</b>")
-    if saved >= target:
-        lines.append(f"${saved:,.0f} saved this month — {rate:.0f}% savings rate. Keep it up.")
-    elif saved > 0:
-        lines.append(f"Positive savings (${saved:,.0f}) but ${abs(gap):,.0f} short of your ${target:,} target.")
+    # Progress bar (10 chars wide)
+    if disc_budget > 0:
+        pct_used = min(disc_spent / disc_budget, 2.0)
+        filled = min(int(pct_used * 10), 10)
+        bar = "█" * filled + "░" * (10 - filled)
+        pct_label = f"{pct_used * 100:.0f}%"
     else:
-        lines.append(f"Spending exceeds income by ${abs(saved):,.0f}. Review categories flagged above.")
+        bar = "█" * 10
+        pct_label = "OVER"
 
-    # Flag recurring waste
-    for cat_data in breakdown:
+    if disc_spent <= disc_budget:
+        remaining = disc_budget - disc_spent
+        lines.append(f"  Spent: ${disc_spent:,.0f}  [{bar}] {pct_label}")
+        lines.append(f"  Left:  <b>${remaining:,.0f}</b>")
+        if daily > 0 and days_left > 0:
+            lines.append(f"  = <b>${daily:,.0f}/day</b> for {days_left} days")
+    else:
+        over_by = disc_spent - disc_budget
+        lines.append(f"  Spent: ${disc_spent:,.0f}  [{bar}] {pct_label}")
+        lines.append(f"  <b>${over_by:,.0f} OVER BUDGET</b>")
+        if days_left > 0:
+            lines.append(f"  Freeze spending for {days_left} day{'s' if days_left != 1 else ''}")
+    lines.append("")
+
+    # ── WEEK-BY-WEEK (middle + end phases) ────────────────────────
+    weekly_breakdown = d.get("weekly_breakdown", [])
+    if phase in ("middle", "end") and weekly_breakdown:
+        lines.append("<b>WEEK BY WEEK</b>")
+        cumulative = 0
+        for wk in weekly_breakdown:
+            wk_total = wk.get("total", 0)
+            cumulative += wk_total
+            wk_start = wk.get("start", "")
+            wk_end = wk.get("end", "")
+            # Format dates as "Mar 1-7"
+            try:
+                s = date.fromisoformat(wk_start)
+                e = date.fromisoformat(wk_end)
+                date_label = f"{month_name[s.month][:3]} {s.day}-{e.day}"
+            except (ValueError, IndexError):
+                date_label = f"Wk {wk['week_num']}"
+
+            marker = "  ◀" if wk["week_num"] == week_num else ""
+            lines.append(f"  Wk {wk['week_num']} ({date_label}): ${wk_total:,.0f}{marker}")
+
+        lines.append(f"  ─────────────────────")
+        lines.append(f"  Total: <b>${cumulative:,.0f}</b> of ${disc_budget:,.0f} budget")
+        lines.append("")
+
+    # ── PHASE-SPECIFIC CONTENT ────────────────────────────────────
+    if phase == "start":
+        _format_start_phase(lines, d, daily, days_in_month)
+    elif phase == "middle":
+        _format_middle_phase(lines, d)
+    else:
+        _format_end_phase(lines, d, saved, target)
+
+    # ── ACTION ITEM (always — max 2 sentences) ───────────────────
+    lines.append("<b>NEXT STEP</b>")
+    if saved >= target:
+        lines.append(f"On track! Keep daily spending under ${daily:,.0f}.")
+    elif saved > 0:
+        gap = target - saved
+        lines.append(f"${gap:,.0f} short of target. Cut ${gap / max(days_left, 1):,.0f}/day to hit it.")
+    else:
+        lines.append(f"Over budget by ${abs(saved):,.0f}. Freeze all non-essential spending.")
+
+    # Flag fees/interest
+    for cat_data in d.get("mtd_breakdown", []):
         cat = cat_data.get("category", "")
         if "interest" in cat.lower() or "fees" in cat.lower():
             amt = abs(cat_data.get("total", 0))
             if amt > 10:
-                lines.append(f"  💸 {cat}: ${amt:,.0f}/mo — priority to eliminate")
+                lines.append(f"  → {cat}: ${amt:,.0f}/mo — eliminate this first")
 
     return "\n".join(lines)
+
+
+def _format_start_phase(lines: list, d: dict, daily_budget: float, days_in_month: int):
+    """Week 1: set the plan, learn from last month."""
+    lines.append("<b>THE PLAN</b>")
+    lines.append(f"  Daily spending target: <b>${daily_budget:,.0f}/day</b> ({days_in_month} days)")
+    lines.append("")
+
+    overbudget = d.get("last_month_overbudget", [])
+    if overbudget:
+        lines.append("<b>LAST MONTH'S LESSONS</b>")
+        for item in overbudget[:3]:
+            lines.append(f"  • {item['category']} was {item['status']}")
+        lines.append("")
+
+
+def _format_middle_phase(lines: list, d: dict):
+    """Weeks 2-3: this week's activity, categories to watch."""
+    week_spent = abs(d.get("week_spending_total", 0))
+    week_count = d.get("week_txn_count", 0)
+
+    if week_spent > 0:
+        lines.append(f"<b>THIS WEEK: ${week_spent:,.0f}</b> ({week_count} txns)")
+        week_merchants = d.get("week_merchants", [])
+        if week_merchants:
+            for m in week_merchants[:3]:
+                name = m.get("description", "?")
+                total = abs(m.get("total_spent", 0))
+                if total > 0:
+                    lines.append(f"  • {name}: ${total:,.0f}")
+        lines.append("")
+
+    # Categories over pace
+    budget_statuses = d.get("budget_statuses", {})
+    flagged = []
+    for cat, bs in budget_statuses.items():
+        status = bs.status if hasattr(bs, "status") else bs.get("status", "")
+        if status in ("over", "elevated"):
+            flagged.append(cat)
+    if flagged:
+        lines.append("<b>OVER PACE</b>")
+        for cat in flagged[:3]:
+            lines.append(f"  • {cat}")
+        lines.append("")
+
+
+def _format_end_phase(lines: list, d: dict, saved: float, target: float):
+    """Week 4+: final score, wins, and lessons."""
+    lines.append("<b>MONTH SCORE</b>")
+    if saved >= target:
+        lines.append(f"  Saved ${saved:,.0f} — target ${target:,} HIT")
+    elif saved > 0:
+        lines.append(f"  Saved ${saved:,.0f} — ${target - saved:,.0f} short of ${target:,}")
+    else:
+        lines.append(f"  ${abs(saved):,.0f} over budget")
+    lines.append("")
+
+    # Big wins
+    trends = d.get("trends", {})
+    breakdown = d.get("mtd_breakdown", [])
+    wins = []
+    for cat_data in sorted(breakdown, key=lambda c: abs(c.get("total", 0)), reverse=True):
+        cat = cat_data.get("category", "")
+        spent = abs(cat_data.get("total", 0))
+        trend = trends.get(cat)
+        if not trend or spent < 10:
+            continue
+        pct = trend.get("pct_vs_mean", 0) if isinstance(trend, dict) else trend.pct_vs_mean
+        mean = trend.get("mean", 0) if isinstance(trend, dict) else trend.mean
+        if pct < -15 and mean > 50:
+            wins.append(f"  • {cat}: ${spent:,.0f} (saving ${mean - spent:,.0f}/mo)")
+    if wins:
+        lines.append("<b>WINS</b>")
+        lines.extend(wins[:3])
+        lines.append("")

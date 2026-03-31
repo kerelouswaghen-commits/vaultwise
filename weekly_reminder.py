@@ -101,6 +101,12 @@ def run(force: bool = False):
     database.init_db(DB_PATH)
     conn = database.get_connection(DB_PATH)
 
+    # Check if reminders are enabled (can be toggled via /reminder on Telegram)
+    if not force and database.get_setting(conn, "weekly_reminder_enabled", "true") != "true":
+        print("Reminders disabled (weekly_reminder_enabled=false). Skipping.")
+        conn.close()
+        return
+
     week_start = database.get_current_week_start()
     database.init_weekly_cycle(conn, week_start)
     print(f"Week start: {week_start}")
