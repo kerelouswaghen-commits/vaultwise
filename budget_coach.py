@@ -175,76 +175,144 @@ def _build_prompt(flex_status, conn, month_key, sel_year, sel_month,
 
     excluded = ", ".join(sorted(fixed_cats | _get_muted()))
 
+    # How much of the savings target was protected?
+    if txn_discretionary <= disc_budget:
+        savings_status = (
+            f"GOOD NEWS: Spending is within budget — the full "
+            f"${savings_target:,}/mo savings goal is on track."
+        )
+    else:
+        savings_lost = txn_discretionary - disc_budget
+        savings_kept = max(savings_target - savings_lost, 0)
+        if savings_kept > 0:
+            savings_status = (
+                f"OVERSPENT by ${savings_lost:,.0f}. Instead of saving "
+                f"${savings_target:,}, only ~${savings_kept:,.0f} goes to savings."
+            )
+        else:
+            savings_status = (
+                f"OVERSPENT by ${savings_lost:,.0f}. The full ${savings_target:,} "
+                f"savings goal is wiped out, plus ${savings_lost - savings_target:,.0f} "
+                f"extra is being pulled from existing savings."
+            )
+
     return (
-        "You are a budget coach inside a personal finance app. "
-        "Analyze the spending data and generate insights.\n\n"
-        f"CONTEXT: This user's spending money is ${disc_budget:,.0f}/month. "
-        f"That's what remains after income (${monthly_income:,.0f}) minus "
-        f"fixed bills (${effective_fixed:,.0f}) minus savings target "
-        f"(${savings_target:,}/mo). Every number and percentage you mention "
-        f"should be relative to this ${disc_budget:,.0f} spending money — "
-        f"NOT relative to total income.\n\n"
-        f"BUDGET:\n"
-        f"- Spending money: ${disc_budget:,.0f} (THIS is the budget)\n"
-        f"- Spent: ${txn_discretionary:,.0f}\n"
-        f"- Remaining: ${discretionary_left:,.0f}\n"
-        f"- % used: {round(txn_discretionary / max(disc_budget, 1) * 100)}%\n"
+        "You are a friendly budget coach. Write like you're explaining "
+        "finances to a smart person who doesn't think in spreadsheets. "
+        "Be warm, clear, and honest — no jargon.\n\n"
+        "THE MENTAL MODEL (explain this simply in the body):\n"
+        f"  Income each month: ${monthly_income:,.0f}\n"
+        f"  Fixed bills (rent, car, insurance, etc.): ${effective_fixed:,.0f}\n"
+        f"  Savings goal: ${savings_target:,}/month\n"
+        f"  What's left for everyday spending: ${disc_budget:,.0f}\n"
+        f"  → If everyday spending stays under ${disc_budget:,.0f}, "
+        f"the savings goal is met.\n"
+        f"  → If it goes over, the extra comes out of savings.\n\n"
+        f"THIS MONTH:\n"
+        f"- Everyday spending so far: ${txn_discretionary:,.0f}\n"
+        f"- Everyday budget: ${disc_budget:,.0f}\n"
+        f"- {savings_status}\n"
         f"- {time_ctx}\n\n"
-        f"CATEGORIES (flexible spending only — fixed bills already excluded):\n"
+        f"CATEGORIES (everyday spending only — bills already excluded):\n"
         + "\n".join(cat_lines) + "\n\n"
         f"{other_detail}\n\n"
         f"FORECASTS:\n"
         + ("\n".join(fc_lines) if fc_lines else "None available.") + "\n\n"
-        f"EXCLUDED (already removed from the data above): {excluded}\n\n"
-        "DUPLICATE MERCHANTS: Check if any merchant appears in multiple "
-        "categories in the data above. If so, mention it in the relevant "
-        "category notes (e.g., 'Note: Amazon also appears in Other Shopping'). "
-        "This helps the user understand their categorization.\n\n"
-        "RETURN a JSON object with:\n"
-        '1. "headline": 8 words max. Reference spending money, not income.\n'
-        '2. "body": 3-5 sentences. Frame everything relative to the '
-        f'${disc_budget:,.0f} spending money budget. Example: '
-        f'"You\'ve used 45% of your spending money halfway through the month." '
-        'Past tense for completed months. Never suggest returning purchases. '
-        'Use forecast data when relevant.\n'
-        '3. "categories": array sorted by concern (worst first), each with:\n'
+        f"EXCLUDED (bills, already removed): {excluded}\n\n"
+        "DUPLICATE MERCHANTS: If a merchant appears in multiple categories, "
+        "note it briefly.\n\n"
+        "RETURN a JSON object with:\n\n"
+        '1. "top_card": A short, punchy 1-2 sentence message for the banner '
+        'at the very top of the dashboard. This is the FIRST thing the user '
+        'sees. Rules:\n'
+        '   - Lead with what happened to savings: was the goal met or not?\n'
+        '   - If over budget: say how much came out of savings and name the '
+        '#1 reason in plain words.\n'
+        '   - If under budget (current month): say how much is left to spend '
+        'and that the savings goal is safe.\n'
+        '   - If under budget (past month): celebrate — savings goal was met.\n'
+        '   - If there are days left, give a simple action '
+        '(e.g., "Keep the next 5 days light and it won\'t grow").\n'
+        '   - Keep it conversational — like a friend texting you about '
+        'your finances.\n'
+        '   - Use dollar amounts. No percentages. No jargon.\n'
+        '   Examples:\n'
+        '     - "You\'re $5,300 over your everyday budget — mostly from '
+        'cash withdrawals and home repairs. That\'s $5,300 less going to '
+        'savings."\n'
+        '     - "$470 left to spend with 5 days to go. Your savings goal '
+        'is looking good!"\n'
+        '     - "March stayed under budget — the full $2,000 savings goal '
+        'was met!"\n\n'
+        '2. "top_card_status": "over" | "under" | "tight"\n'
+        '   - "over" if everyday spending exceeded the budget\n'
+        '   - "tight" if under budget but less than $80/day remaining\n'
+        '   - "under" if comfortably under budget\n\n'
+        '3. "headline": 8 words max. Lead with the savings impact.\n'
+        '   Good: "Savings took a hit this month"\n'
+        '   Good: "On track — savings goal is safe"\n'
+        '   Bad: "Spent 288% of spending money" (confusing)\n\n'
+        '4. "body": 2-4 sentences, plain language. Rules:\n'
+        '   - Start by stating the situation in one clear sentence: '
+        'how much was spent vs the everyday budget, and what that means '
+        'for savings.\n'
+        '   - Then name the 1-2 biggest categories that drove the result.\n'
+        '   - If forecasts are available, end with what next month looks like.\n'
+        '   - Use dollar amounts, not percentages. '
+        'Say "$5,300 over" not "288%". Say "2x" or "3x the usual" if needed.\n'
+        '   - NEVER use the phrase "spending money" — say "everyday budget" '
+        'or "everyday spending" instead.\n'
+        '   - Past tense for completed months.\n'
+        '   - Never suggest returning purchases.\n\n'
+        '5. "categories": array sorted by concern (worst first), each with:\n'
         '   - "name": exact category name from data above\n'
         '   - "badge": "way over" | "elevated" | "hot pace" | "one-time" | '
         '"normal" | "under pace" | "low"\n'
         '   - "badge_icon": single emoji\n'
-        '   - "color": "#dc2626" (red/way over) | "#e11d48" (rose/elevated) | "#f59e0b" (amber/hot) | "#0284c7" (blue/normal) | "#16a34a" (green/under) | "#059669" (emerald/low)\n'
-        '   - "note": one sentence. Say "$X actual vs $Y expected" then '
-        'brief context. If a merchant appears in multiple categories '
-        '(e.g., Amazon in both Online Shopping and Other Shopping, or '
-        'Anthropic in multiple categories), note the duplication.\n\n'
+        '   - "color": "#dc2626" (red/way over) | "#e11d48" (rose/elevated) | '
+        '"#f59e0b" (amber/hot) | "#0284c7" (blue/normal) | "#16a34a" (green/under) | '
+        '"#059669" (emerald/low)\n'
+        '   - "note": one sentence. Say "$X spent vs $Y typical" then brief context. '
+        'Flag duplicate merchants across categories if noticed.\n\n'
         "SORT: Most concerning first (way over → elevated → normal → low).\n\n"
-        "CATEGORY NOTE: Some merchants may appear in multiple categories "
-        "(e.g., Amazon in both 'Online Shopping' and 'Other Shopping'). "
-        "If you notice this, mention it briefly in the relevant category's "
-        "note (e.g., 'includes some Amazon purchases also in Online Shopping'). "
-        "Do NOT double-count the impact.\n\n"
         "DUPLICATE CHECK: If categories look like they overlap "
         "(e.g., 'Education' $57 when 'Childcare & Education' is excluded as fixed), "
-        "flag the smaller one as possibly miscategorized in your note.\n\n"
+        "flag the smaller one as possibly miscategorized.\n\n"
         "Return ONLY valid JSON. No markdown. No explanation."
     )
 
 
-def _call_claude(prompt, get_advisor_fn, flex_status):
+def _call_claude(prompt, get_advisor_fn, flex_status,
+                 over_budget=0, discretionary_left=0,
+                 savings_target=0, days_left=0):
     """Call Claude via generate_coach_response. Fallback on failure."""
+    fb_kwargs = dict(over_budget=over_budget, discretionary_left=discretionary_left,
+                     savings_target=savings_target, days_left=days_left)
     advisor = get_advisor_fn()
     if not advisor:
-        return _fallback_response(flex_status)
+        return _fallback_response(flex_status, **fb_kwargs)
 
     try:
         return advisor.generate_coach_response(prompt, max_tokens=2048)
     except Exception:
-        return _fallback_response(flex_status)
+        return _fallback_response(flex_status, **fb_kwargs)
 
 
-def _fallback_response(flex_status):
+def _fallback_response(flex_status, over_budget=0, discretionary_left=0,
+                       savings_target=0, days_left=0):
     """Minimal response if Claude is unavailable."""
+    if over_budget > 0:
+        top_card = f"Everyday spending went ${over_budget:,.0f} over budget — that came out of savings."
+        top_status = "over"
+    elif discretionary_left > 0 and days_left > 0:
+        top_card = f"${discretionary_left:,.0f} left to spend. Savings goal is on track."
+        top_status = "under"
+    else:
+        top_card = "Month complete. Check the breakdown below."
+        top_status = "under"
     return {
+        "top_card": top_card,
+        "top_card_status": top_status,
         "headline": "Spending summary",
         "body": "Claude is unavailable. Here are your spending categories.",
         "categories": [
@@ -264,70 +332,30 @@ def _fallback_response(flex_status):
 # RENDERING
 # ═══════════════════════════════════════════════════════════════
 
-def _render_daily_card(over_budget, discretionary_left, days_left,
-                       viewing_current, month_name_str):
-    """Replaces the old FREEZE spending card."""
+def _render_daily_card(coach, escape_fn):
+    """Top-level card: Claude-generated savings impact message."""
 
-    if not viewing_current:
-        # Past month
-        if over_budget > 0:
-            html = (
-                f'<div style="background:#fef2f2;border:1px solid #fecaca;'
-                f'border-radius:10px;padding:10px 14px;margin-bottom:8px;">'
-                f'<span style="font-size:1rem;font-weight:700;color:#ef4444;">'
-                f'\\${over_budget:,.0f} from savings</span> '
-                f'<span style="color:#6b7280;font-size:0.88rem;">'
-                f'was used in {month_name_str}.</span></div>'
-            )
-        else:
-            html = (
-                f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;'
-                f'border-radius:10px;padding:10px 14px;margin-bottom:8px;">'
-                f'<span style="font-size:1rem;font-weight:700;color:#16a34a;">'
-                f'{month_name_str} closed</span> '
-                f'<span style="color:#6b7280;font-size:0.88rem;">'
-                f'with \\${discretionary_left:,.0f} spending money left.'
-                f'</span></div>'
-            )
-    elif over_budget > 0:
-        html = (
-            f'<div style="background:#fef2f2;border:1px solid #fecaca;'
-            f'border-radius:10px;padding:10px 14px;margin-bottom:8px;">'
-            f'<span style="font-size:1rem;font-weight:700;color:#ef4444;">'
-            f'\\${over_budget:,.0f} from savings</span> '
-            f'<span style="color:#6b7280;font-size:0.88rem;">'
-            f'used this month.'
-        )
-        if days_left > 0:
-            html += (
-                f' Keeping spending minimal for the last {days_left} days '
-                f'stops it from growing.'
-            )
-        html += '</span></div>'
-    elif discretionary_left > 0 and days_left > 0:
-        daily = round(discretionary_left / max(days_left, 1))
-        if daily > 80:
-            html = (
-                f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;'
-                f'border-radius:10px;padding:10px 14px;margin-bottom:8px;">'
-                f'<span style="font-size:1rem;font-weight:700;color:#22c55e;">'
-                f'\\${daily}/day</span> '
-                f'<span style="color:#6b7280;font-size:0.88rem;">'
-                f'for the next {days_left} days. Looking good.</span></div>'
-            )
-        else:
-            html = (
-                f'<div style="background:#fffbeb;border:1px solid #fde68a;'
-                f'border-radius:10px;padding:10px 14px;margin-bottom:8px;">'
-                f'<span style="font-size:1rem;font-weight:700;color:#d97706;">'
-                f'\\${daily}/day</span> '
-                f'<span style="color:#6b7280;font-size:0.88rem;">'
-                f'for the next {days_left} days. Getting tight.</span></div>'
-            )
+    text = coach.get("top_card", "")
+    if not text:
+        return
+
+    status = coach.get("top_card_status", "under")
+
+    if status == "over":
+        bg, border, accent = "#fef2f2", "#fecaca", "#ef4444"
+    elif status == "tight":
+        bg, border, accent = "#fffbeb", "#fde68a", "#d97706"
     else:
-        return  # nothing to show
+        bg, border, accent = "#f0fdf4", "#bbf7d0", "#16a34a"
 
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="background:{bg};border:1px solid {border};'
+        f'border-radius:10px;padding:10px 14px;margin-bottom:8px;'
+        f'font-size:0.9rem;line-height:1.5;color:#374151;">'
+        f'{_bold_dollars(escape_fn(text))}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _render_summary(coach, escape_fn):
@@ -579,12 +607,6 @@ def render(conn, selected_month, sel_year, sel_month,
     viewing_current = days_left > 0
     month_name = calendar.month_name[sel_month]
 
-    # ── Daily card (replaces FREEZE) ─────────────────────────
-    _render_daily_card(
-        over_budget, discretionary_left, days_left,
-        viewing_current, f"{month_name} {sel_year}",
-    )
-
     # ── Get flexible categories (exclude fixed + muted) ──────
     flex_status = _get_flex_categories(conn, fixed_cats, month_key=selected_month)
 
@@ -611,12 +633,19 @@ def render(conn, selected_month, sel_year, sel_month,
         )
         with st.spinner("Analyzing spending..."):
             st.session_state[cache_key] = _call_claude(
-                prompt, get_advisor_fn, flex_status
+                prompt, get_advisor_fn, flex_status,
+                over_budget=over_budget,
+                discretionary_left=discretionary_left,
+                savings_target=savings_target,
+                days_left=days_left,
             )
 
     coach = st.session_state.get(cache_key)
     if not coach:
         return
+
+    # ── Daily card (Claude-generated) ─────────────────────────
+    _render_daily_card(coach, escape_fn)
 
     # ── Sort by severity ─────────────────────────────────────
     severity_map = {
@@ -650,7 +679,7 @@ def render(conn, selected_month, sel_year, sel_month,
     st.markdown(
         '<div style="font-size:0.68rem;color:#aaa;font-weight:700;'
         'text-transform:uppercase;letter-spacing:0.6px;'
-        'margin:8px 0 6px 2px;">Your Spending Money Breakdown</div>',
+        'margin:8px 0 6px 2px;">Everyday Spending Breakdown</div>',
         unsafe_allow_html=True,
     )
 
@@ -700,12 +729,25 @@ def render(conn, selected_month, sel_year, sel_month,
 
     # ── Savings dip callout ──────────────────────────────────
     if over_budget > 0:
+        period = "this" if viewing_current else "that"
+        actual_saved = max(savings_target - over_budget, 0)
+        if actual_saved > 0:
+            msg = (
+                f'Instead of saving \\${savings_target:,} {period} month, '
+                f'only ~\\${actual_saved:,.0f} went to savings '
+                f'(\\${over_budget:,.0f} was used for everyday spending).'
+            )
+        else:
+            msg = (
+                f'The \\${savings_target:,} savings goal was fully used up, '
+                f'plus an extra \\${over_budget - savings_target:,.0f} came '
+                f'from existing savings.'
+            )
         st.markdown(
             f'<div style="background:#fef2f2;border:1px solid #fecaca;'
             f'border-radius:10px;padding:10px 14px;margin-top:8px;'
             f'font-size:0.84rem;color:#991b1b;">'
-            f'\\${over_budget:,.0f} came from savings '
-            f'{"this" if viewing_current else "that"} month.</div>',
+            f'{msg}</div>',
             unsafe_allow_html=True,
         )
 
