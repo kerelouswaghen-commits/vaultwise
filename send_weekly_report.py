@@ -70,8 +70,9 @@ def main():
     print("📊 Generating charts...")
     charts = []
     try:
-        # Weekly spending (filtered — excludes transfers/payments)
-        this_week = database.get_weekly_spending(conn, exclude_categories=config.EXCLUDED_CATEGORIES)
+        # Weekly spending (flex only — excludes transfers AND fixed bills)
+        _chart_excl = config.EXCLUDED_CATEGORIES | report_data.get("fixed_categories", set())
+        this_week = database.get_weekly_spending(conn, exclude_categories=_chart_excl)
         if this_week.get("categories"):
             charts.append((
                 chart_generator.generate_weekly_spending_chart(this_week),

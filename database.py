@@ -1023,15 +1023,20 @@ def get_weekly_merchants(conn, start_date: str, end_date: str,
 
 
 def get_month_weekly_breakdown(conn, year: int, month: int,
-                               exclude_categories=None) -> list:
-    """Split a month's spending into calendar weeks.
+                               exclude_categories=None,
+                               fixed_categories=None) -> list:
+    """Split a month's spending into calendar weeks (flex only).
+
+    Args:
+        exclude_categories: Internal transfers to ignore completely.
+        fixed_categories: Fixed bills to exclude from flex tracking.
 
     Returns list of dicts: [{week_num, start, end, total, txn_count}, ...]
     """
     from calendar import monthrange
     days_in_month = monthrange(year, month)[1]
     month_start = date(year, month, 1)
-    excl = exclude_categories or set()
+    all_excl = (exclude_categories or set()) | (fixed_categories or set())
 
     weeks = []
     week_num = 1
@@ -1046,8 +1051,8 @@ def get_month_weekly_breakdown(conn, year: int, month: int,
             FROM transactions
             WHERE date >= ? AND date <= ? AND amount < 0
               AND category NOT IN ({})
-        """.format(",".join("?" for _ in excl)),
-            (wk_start.isoformat(), wk_end.isoformat(), *excl)
+        """.format(",".join("?" for _ in all_excl)),
+            (wk_start.isoformat(), wk_end.isoformat(), *all_excl)
         ).fetchone()
 
         weeks.append({

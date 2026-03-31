@@ -207,13 +207,13 @@ def format_weekly_report_html(report_data: dict, **_kwargs) -> str:
 
     if disc_spent <= disc_budget:
         remaining = disc_budget - disc_spent
-        lines.append(f"  Spent: ${disc_spent:,.0f}  [{bar}] {pct_label}")
+        lines.append(f"  Flex spent: ${disc_spent:,.0f}  [{bar}] {pct_label}")
         lines.append(f"  Left:  <b>${remaining:,.0f}</b>")
         if daily > 0 and days_left > 0:
             lines.append(f"  = <b>${daily:,.0f}/day</b> for {days_left} days")
     else:
         over_by = disc_spent - disc_budget
-        lines.append(f"  Spent: ${disc_spent:,.0f}  [{bar}] {pct_label}")
+        lines.append(f"  Flex spent: ${disc_spent:,.0f}  [{bar}] {pct_label}")
         lines.append(f"  <b>${over_by:,.0f} OVER BUDGET</b>")
         if days_left > 0:
             lines.append(f"  Freeze spending for {days_left} day{'s' if days_left != 1 else ''}")

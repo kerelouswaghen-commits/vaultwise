@@ -96,8 +96,8 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
     except Exception:
         pass
 
-    # MTD total for scorecard
-    mtd_total = sum(abs(c.get("total", 0)) for c in mtd_breakdown) if mtd_breakdown else 0
+    # MTD total for scorecard (only net-negative categories = actual spending, not refunds)
+    mtd_total = sum(abs(c.get("total", 0)) for c in mtd_breakdown if c.get("total", 0) < 0) if mtd_breakdown else 0
 
     # ── Dashboard-grade metrics (same math as home.py) ────────────
     import models
@@ -117,7 +117,17 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
         "Daycare", "Church & Family", "Internet",
     })
     txn_fixed = sum(abs(c.get("total", 0)) for c in mtd_breakdown if c.get("category") in _fixed_cats)
-    txn_discretionary = mtd_total - txn_fixed
+    # Flex spending = sum of expense transactions (amount < 0) excluding fixed & internal categories
+    # Computed at transaction level (not category-net) to match weekly breakdown exactly
+    _excl_for_flex = _fixed_cats | config.EXCLUDED_CATEGORIES
+    _flex_rows = conn.execute("""
+        SELECT SUM(amount) as total FROM transactions
+        WHERE date >= ? AND date <= ? AND amount < 0
+          AND category NOT IN ({})
+    """.format(",".join("?" for _ in _excl_for_flex)),
+        (month_start.isoformat(), today.isoformat(), *_excl_for_flex)
+    ).fetchone()
+    txn_discretionary = abs(_flex_rows["total"]) if _flex_rows and _flex_rows["total"] else 0
     effective_fixed = max(fixed_costs, txn_fixed)
     total_outflow = effective_fixed + txn_discretionary
     savings_target_val = int(database.get_setting(conn, "monthly_savings_target", "2000"))
@@ -174,9 +184,10 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
     week_number = (today.day - 1) // 7 + 1
     weeks_in_month = (days_in_month - 1) // 7 + 1
 
-    # Week-by-week cumulative breakdown
+    # Week-by-week cumulative breakdown (flex only — excludes fixed bills)
     weekly_breakdown = database.get_month_weekly_breakdown(
-        conn, today.year, today.month, exclude_categories=_excl
+        conn, today.year, today.month,
+        exclude_categories=_excl, fixed_categories=_fixed_cats,
     )
 
     # This week's top merchants (not monthly)
@@ -226,6 +237,7 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
         "trends": trends,
         "budget_statuses": budget_statuses,
         "top_merchants": top_merchants,
+        "fixed_categories": _fixed_cats,
         # Phase-aware data
         "month_phase": month_phase,
         "week_number": week_number,
