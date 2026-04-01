@@ -119,18 +119,15 @@ with st.sidebar:
             # Note: bonuses always excluded here for conservative estimate (dashboard has toggles)
             _monthly_income -= (_kero_bonus + _maggie_bonus)
 
-            _fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
-
-            from shared.filters import get_filtered_breakdown
+            from shared.filters import get_filtered_breakdown, get_fixed_categories, get_flex_categories
             _mb = get_filtered_breakdown(conn, current_month)
-            _total_spent = sum(abs(c["total"]) for c in _mb)
 
-            _fixed_cats = {"Housing & Utilities", "Debt Payments", "Family Support",
-                           "Transportation", "Phone & Internet", "Car Insurance"}
-            _fixed_cats.update(getattr(config, 'MONARCH_FIXED_MAP', {}).keys())
+            _fixed_cats = get_fixed_categories(conn)
+            _flex_cats = get_flex_categories(conn)
+            _eff_fixed = database.get_effective_fixed_total(conn)
             _txn_fixed = sum(abs(c["total"]) for c in _mb if c["category"] in _fixed_cats)
-            _txn_disc = _total_spent - _txn_fixed
-            _eff_fixed = max(_fixed_costs, _txn_fixed)
+            _txn_disc = sum(abs(c["total"]) for c in _mb if c["category"] in _flex_cats)
+            _total_spent = _txn_fixed + _txn_disc
             _total_outflow = _eff_fixed + _txn_disc
             _saved = _monthly_income - _total_outflow
 

@@ -295,21 +295,19 @@ def compute_savings_status(conn, target_monthly: int = 1000, income_override: fl
 def compute_savings_streak(conn, target_monthly: int = 1000) -> int:
     """Count consecutive months meeting the savings target, going backward from current.
 
-    Uses the same logic as the dashboard:
-    - Income from config (get_income_for_month), bonuses excluded
-    - Expenses from transactions, filtered by muted + excluded categories
-    - effective_fixed = max(config fixed sum, actual fixed txns)
-    - saved = income - effective_fixed - discretionary
+    Uses DB-driven category_config for fix/flex/exclude classification.
     """
     try:
-        excluded = list(set(getattr(config, 'MUTED_CATEGORIES', [])) | config.EXCLUDED_CATEGORIES)
-        excl_placeholders = ",".join("?" for _ in excluded)
+        import database as db
+        excluded = list(db.get_categories_by_type(conn, "exclude"))
+        fixed_cats = list(db.get_categories_by_type(conn, "fix"))
+        flex_cats = list(db.get_categories_by_type(conn, "flex"))
+        effective_fixed = db.get_effective_fixed_total(conn)
 
-        fixed_cats = {"Housing & Utilities", "Debt Payments", "Family Support",
-                      "Transportation", "Phone & Internet", "Car Insurance"}
-        fixed_cats.update(getattr(config, 'MONARCH_FIXED_MAP', {}).keys())
-        fixed_cats = list(fixed_cats)
-        fixed_sum = sum(config.FIXED_MONTHLY_EXPENSES.values())
+        if not excluded:
+            excluded = ["__none__"]
+        excl_placeholders = ",".join("?" for _ in excluded)
+        flex_placeholders = ",".join("?" for _ in flex_cats) if flex_cats else "'__none__'"
 
         rows = conn.execute(f"""
             SELECT strftime('%Y-%m', date) as month,
@@ -322,27 +320,24 @@ def compute_savings_streak(conn, target_monthly: int = 1000) -> int:
         """, excluded).fetchall()
 
         streak = 0
-        fixed_placeholders = ",".join("?" for _ in fixed_cats)
         for r in rows:
             ym = r["month"]
             yr, mo = int(ym.split("-")[0]), int(ym.split("-")[1])
             income_data = get_income_for_month(yr, mo)
             monthly_income = income_data["total_income"] - income_data.get("kero_bonus", 0) - income_data.get("maggie_bonus", 0)
 
-            total_spent = abs(r["total_expenses"]) if r["total_expenses"] else 0
-
-            # Get fixed vs discretionary split for this month
-            fixed_rows = conn.execute(f"""
-                SELECT SUM(amount) as total
-                FROM transactions
-                WHERE strftime('%Y-%m', date) = ?
-                  AND amount < 0
-                  AND category NOT IN ({excl_placeholders})
-                  AND category IN ({fixed_placeholders})
-            """, [ym] + excluded + fixed_cats).fetchone()
-            txn_fixed = abs(fixed_rows["total"]) if fixed_rows and fixed_rows["total"] else 0
-            txn_disc = total_spent - txn_fixed
-            effective_fixed = max(fixed_sum, txn_fixed)
+            # Get flex spending for this month
+            if flex_cats:
+                flex_rows = conn.execute(f"""
+                    SELECT SUM(amount) as total
+                    FROM transactions
+                    WHERE strftime('%Y-%m', date) = ?
+                      AND amount < 0
+                      AND category IN ({flex_placeholders})
+                """, [ym] + flex_cats).fetchone()
+                txn_disc = abs(flex_rows["total"]) if flex_rows and flex_rows["total"] else 0
+            else:
+                txn_disc = 0
 
             saved = monthly_income - effective_fixed - txn_disc
             if saved >= target_monthly:

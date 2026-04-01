@@ -74,8 +74,8 @@ def home_page():
             )
         conn.commit()
 
-    # Get this month's data (centralized filtering: active + merge + mute)
-    from shared.filters import get_filtered_breakdown
+    # Get this month's data (DB-driven: excludes 'exclude' type categories)
+    from shared.filters import get_filtered_breakdown, get_fixed_categories, get_flex_categories
     month_breakdown = get_filtered_breakdown(conn, selected_month)
     if not month_breakdown:
         st.info(f"No spending data for {month_display}.")
@@ -111,18 +111,13 @@ def home_page():
     if not _maggie_bonus_on:
         _monthly_income -= _maggie_bonus_val
 
-    _fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
-    from shared.filters import get_fixed_categories
-    _fixed_cats = get_fixed_categories()
-    _muted_cats = set(getattr(config, 'MUTED_CATEGORIES', []))
+    # Fixed/flex from DB-driven category_config (single source of truth)
+    _fixed_cats = get_fixed_categories(conn)
+    _flex_cats = get_flex_categories(conn)
+    _effective_fixed = database.get_effective_fixed_total(conn)
 
-    # Compute fixed vs discretionary from the already-filtered breakdown
-    _txn_fixed = sum(
-        abs(c["total"]) for c in month_breakdown
-        if c["category"] in _fixed_cats
-    )
-    _txn_discretionary = total_spent - _txn_fixed
-    _effective_fixed = max(_fixed_costs, _txn_fixed)
+    _txn_fixed = sum(abs(c["total"]) for c in month_breakdown if c["category"] in _fixed_cats)
+    _txn_discretionary = sum(abs(c["total"]) for c in month_breakdown if c["category"] in _flex_cats)
     _total_outflow = _effective_fixed + _txn_discretionary
     _budget_limit = _monthly_income - savings_target
     _saved = _monthly_income - _total_outflow

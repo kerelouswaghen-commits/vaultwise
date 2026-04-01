@@ -69,6 +69,18 @@ MIGRATIONS = [
             INSERT OR IGNORE INTO settings (key, value) VALUES ('monarch_category_map', '{}');
         """,
     },
+    {
+        "id": "007_category_config",
+        "sql": """
+            CREATE TABLE IF NOT EXISTS category_config (
+                name           TEXT PRIMARY KEY,
+                type           TEXT NOT NULL DEFAULT 'flex',
+                monthly_budget REAL,
+                sort_order     INTEGER DEFAULT 50,
+                updated_ts     TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+        """,
+    },
 ]
 
 

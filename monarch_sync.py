@@ -507,8 +507,11 @@ query GetTransactionsList($offset: Int, $limit: Int, $filters: TransactionFilter
 """
 
 
-def _transform_transaction(txn: dict, acct_mapping: dict, cat_mapping: dict) -> dict | None:
-    """Transform a Monarch transaction into Vaultwise format. Returns None to skip."""
+def _transform_transaction(txn: dict, acct_mapping: dict, **_kwargs) -> dict | None:
+    """Transform a Monarch transaction into Vaultwise format. Returns None to skip.
+
+    Uses Monarch's category name directly (no mapping).
+    """
     if txn.get("pending", False):
         return None
 
@@ -530,15 +533,15 @@ def _transform_transaction(txn: dict, acct_mapping: dict, cat_mapping: dict) -> 
     description = merchant_name or plaid_name or "Unknown"
     raw_description = plaid_name or merchant_name or "Unknown"
 
-    monarch_cat = txn.get("category", {}).get("name", "Other") if txn.get("category") else "Other"
-    vw_category = cat_mapping.get(monarch_cat, "Other")
+    # Use Monarch's category name directly — no mapping
+    category = txn.get("category", {}).get("name", "Uncategorized") if txn.get("category") else "Uncategorized"
 
     return {
         "date": txn_date,
         "description": description,
         "raw_description": raw_description,
         "amount": round(amount, 2),
-        "category": vw_category,
+        "category": category,
         "account_id": vw_account,
         "statement_id": None,
         "confidence": 0.9,
@@ -595,7 +598,6 @@ def sync_transactions(conn, force_full: bool = False) -> dict:
         return result
 
     acct_mapping = get_account_mapping(conn)
-    cat_mapping = get_category_mapping(conn)
 
     if not acct_mapping:
         result["errors"].append("No accounts mapped — configure in Settings")
@@ -623,7 +625,7 @@ def sync_transactions(conn, force_full: bool = False) -> dict:
     # Transform and deduplicate against existing DB transactions
     vw_transactions = []
     for txn in all_transactions:
-        transformed = _transform_transaction(txn, acct_mapping, cat_mapping)
+        transformed = _transform_transaction(txn, acct_mapping)
         if not transformed:
             result["skipped"] += 1
             continue
@@ -668,3 +670,85 @@ def get_sync_stats(conn) -> dict:
     except Exception:
         count = 0
     return {"last_sync": last_sync, "transaction_count": count}
+
+
+# ---------------------------------------------------------------------------
+# Full resync & category auto-classification
+# ---------------------------------------------------------------------------
+
+# Keywords for auto-classifying Monarch categories as fix/flex/exclude
+_EXCLUDE_KEYWORDS = {
+    "payment", "transfer", "credit card", "income", "paycheck",
+    "refund", "check", "balance adjustment", "business income",
+    "other income", "loan repayment",
+}
+_FIX_KEYWORDS = {
+    "mortgage", "rent", "insurance", "loan", "utilities", "electric",
+    "water", "gas & electric", "garbage", "internet", "cable",
+    "phone", "child care", "childcare", "student loan", "auto payment",
+    "daycare", "education", "tuition",
+}
+
+
+def auto_classify_category(name: str) -> str:
+    """Guess fix/flex/exclude type from a Monarch category name."""
+    lower = name.lower().strip()
+    for kw in _EXCLUDE_KEYWORDS:
+        if kw in lower:
+            return "exclude"
+    for kw in _FIX_KEYWORDS:
+        if kw in lower:
+            return "fix"
+    return "flex"
+
+
+def populate_category_config(conn):
+    """Populate category_config from distinct categories in transactions table.
+
+    Only adds NEW categories — does not overwrite existing type assignments.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT category FROM transactions WHERE category IS NOT NULL"
+    ).fetchall()
+    for r in rows:
+        cat_name = r["category"]
+        default_type = auto_classify_category(cat_name)
+        database.ensure_category_config(conn, cat_name, default_type)
+
+
+def force_full_resync(conn) -> dict:
+    """Wipe all transaction data and re-sync everything from Monarch.
+
+    Steps:
+    1. Delete all transactions and statements
+    2. Clear sync timestamp
+    3. Pull ALL history from Monarch
+    4. Populate category_config with auto-classification
+
+    Returns sync result dict.
+    """
+    # Wipe existing data
+    conn.execute("DELETE FROM transactions")
+    conn.execute("DELETE FROM statements")
+    conn.execute("DELETE FROM category_analytics")
+    conn.commit()
+    print("  Wiped transactions, statements, and analytics cache")
+
+    # Clear sync state so full pull happens
+    database.set_setting(conn, "monarch_last_sync", "")
+
+    # Run full sync
+    result = sync_transactions(conn, force_full=True)
+    print(f"  Synced: {result['new']} new, {result['skipped']} skipped")
+
+    if result.get("errors"):
+        for e in result["errors"]:
+            print(f"  ERROR: {e}")
+        return result
+
+    # Populate category_config from the fresh data
+    populate_category_config(conn)
+    cat_count = conn.execute("SELECT COUNT(*) as c FROM category_config").fetchone()["c"]
+    print(f"  Category config: {cat_count} categories auto-classified")
+
+    return result

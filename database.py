@@ -1068,6 +1068,125 @@ def get_month_weekly_breakdown(conn, year: int, month: int,
     return weeks
 
 
+# ── Category Config (fix / flex / exclude) ───────────────────────────────
+
+def get_category_type(conn, category: str) -> str:
+    """Returns 'fix', 'flex', or 'exclude' for a category. Defaults to 'flex'."""
+    row = conn.execute(
+        "SELECT type FROM category_config WHERE name = ?", (category,)
+    ).fetchone()
+    return row["type"] if row else "flex"
+
+
+def get_categories_by_type(conn, cat_type: str) -> list:
+    """Returns all category names of given type ('fix', 'flex', or 'exclude')."""
+    rows = conn.execute(
+        "SELECT name FROM category_config WHERE type = ? ORDER BY sort_order, name",
+        (cat_type,),
+    ).fetchall()
+    return [r["name"] for r in rows]
+
+
+def get_all_category_config(conn) -> list:
+    """Returns all category configs as list of dicts."""
+    rows = conn.execute(
+        "SELECT name, type, monthly_budget, sort_order FROM category_config ORDER BY sort_order, name"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_category_type(conn, category: str, cat_type: str):
+    """Update or insert a category's type."""
+    conn.execute("""
+        INSERT INTO category_config (name, type, updated_ts)
+        VALUES (?, ?, datetime('now'))
+        ON CONFLICT(name) DO UPDATE SET type = excluded.type, updated_ts = datetime('now')
+    """, (category, cat_type))
+    conn.commit()
+
+
+def set_category_budget(conn, category: str, budget):
+    """Update a category's monthly budget."""
+    conn.execute("""
+        UPDATE category_config SET monthly_budget = ?, updated_ts = datetime('now')
+        WHERE name = ?
+    """, (budget, category))
+    conn.commit()
+
+
+def ensure_category_config(conn, category: str, default_type: str = "flex"):
+    """Ensure a category exists in category_config, inserting with default if not."""
+    conn.execute("""
+        INSERT OR IGNORE INTO category_config (name, type) VALUES (?, ?)
+    """, (category, default_type))
+    conn.commit()
+
+
+def get_last_month_fixed(conn) -> dict:
+    """Returns {category: total} for all 'fix' categories from previous month."""
+    today = date.today()
+    if today.month == 1:
+        prev_month, prev_year = 12, today.year - 1
+    else:
+        prev_month, prev_year = today.month - 1, today.year
+    prev_key = f"{prev_year}-{prev_month:02d}"
+
+    fix_cats = get_categories_by_type(conn, "fix")
+    if not fix_cats:
+        return {}
+
+    placeholders = ",".join("?" for _ in fix_cats)
+    rows = conn.execute(f"""
+        SELECT category, SUM(ABS(amount)) as total
+        FROM transactions
+        WHERE strftime('%Y-%m', date) = ? AND amount < 0
+          AND category IN ({placeholders})
+        GROUP BY category
+    """, (prev_key, *fix_cats)).fetchall()
+    return {r["category"]: round(r["total"], 2) for r in rows}
+
+
+def get_fixed_expense_overrides(conn) -> dict:
+    """Returns user-edited fixed amounts (JSON from settings)."""
+    import json
+    raw = get_setting(conn, "fixed_expense_overrides", "{}")
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def get_effective_fixed_total(conn) -> float:
+    """Returns total fixed: uses overrides where set, last-month actuals otherwise."""
+    last_month = get_last_month_fixed(conn)
+    overrides = get_fixed_expense_overrides(conn)
+
+    # Merge: override takes precedence, fallback to last month actual
+    all_cats = set(last_month.keys()) | set(overrides.keys())
+    total = 0.0
+    for cat in all_cats:
+        total += overrides.get(cat, last_month.get(cat, 0))
+    return round(total, 2)
+
+
+def get_effective_fixed_detail(conn) -> list:
+    """Returns per-category fixed detail: [{name, last_month, override, effective}, ...]."""
+    last_month = get_last_month_fixed(conn)
+    overrides = get_fixed_expense_overrides(conn)
+    all_cats = sorted(set(last_month.keys()) | set(overrides.keys()))
+    result = []
+    for cat in all_cats:
+        lm = last_month.get(cat, 0)
+        ov = overrides.get(cat)
+        result.append({
+            "name": cat,
+            "last_month": lm,
+            "override": ov,
+            "effective": ov if ov is not None else lm,
+        })
+    return result
+
+
 # ── Category Analytics Cache ─────────────────────────────────────────────
 
 def upsert_category_analytics(conn, category: str, scope: str, data_json: str) -> None:

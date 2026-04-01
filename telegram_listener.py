@@ -147,8 +147,8 @@ def _trigger_weekly_report(token, conn):
         # Generate charts (filtered — excludes transfers/payments)
         charts = []
         try:
-            from shared.filters import get_fixed_categories
-            _chart_excl = config.EXCLUDED_CATEGORIES | get_fixed_categories()
+            from shared.filters import get_fixed_categories, get_excluded_categories
+            _chart_excl = get_excluded_categories(conn) | get_fixed_categories(conn)
             this_week = database.get_weekly_spending(conn, exclude_categories=_chart_excl)
             if this_week.get("categories"):
                 charts.append((

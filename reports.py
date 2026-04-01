@@ -92,7 +92,7 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
     # ── Dashboard-grade metrics (IDENTICAL math to home.py) ────────
     import models
     from calendar import monthrange
-    from shared.filters import get_fixed_categories
+    from shared.filters import get_fixed_categories, get_flex_categories
 
     # Income — respect bonus toggles (same as dashboard)
     income_data = models.get_income_for_month(today.year, today.month)
@@ -104,15 +104,15 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
     if not _bonus2_on:
         monthly_income -= (income_data.get("maggie_bonus", 0) if isinstance(income_data, dict) else 0)
 
-    # Fixed categories — single source of truth (shared with dashboard)
-    _fixed_cats = get_fixed_categories()
-    fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
+    # Fixed/flex from DB-driven category_config (single source of truth)
+    _fixed_cats = get_fixed_categories(conn)
+    _flex_cats = get_flex_categories(conn)
+    effective_fixed = database.get_effective_fixed_total(conn)
 
-    # MTD totals — same math as dashboard (category-level from filtered breakdown)
-    mtd_total = sum(abs(c.get("total", 0)) for c in mtd_breakdown) if mtd_breakdown else 0
+    # MTD totals — same math as dashboard
     txn_fixed = sum(abs(c.get("total", 0)) for c in mtd_breakdown if c.get("category") in _fixed_cats)
-    txn_discretionary = mtd_total - txn_fixed
-    effective_fixed = max(fixed_costs, txn_fixed)
+    txn_discretionary = sum(abs(c.get("total", 0)) for c in mtd_breakdown if c.get("category") in _flex_cats)
+    mtd_total = txn_fixed + txn_discretionary
     total_outflow = effective_fixed + txn_discretionary
     savings_target_val = int(database.get_setting(conn, "monthly_savings_target", "2000"))
     saved = monthly_income - total_outflow
@@ -146,20 +146,22 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
             except Exception:
                 pass
 
-    # Budget status: fresh computation (exclude internal transfers)
-    _excl = config.EXCLUDED_CATEGORIES
+    # Budget status: fresh computation (flex categories only)
+    from shared.filters import get_excluded_categories
+    _excl = get_excluded_categories(conn)
+    _non_flex = _excl | _fixed_cats  # everything that's not flex
     budget_statuses = {}
     try:
         for s in analytics.compute_budget_status(conn):
-            if s.category not in _excl:
+            if s.category not in _non_flex:
                 budget_statuses[s.category] = s
     except Exception:
         pass
 
-    # Top merchants this month (exclude transfers/payments)
+    # Top merchants this month (exclude non-flex)
     try:
         _all_merchants = database.get_merchant_spending(conn, months=1)
-        top_merchants = [m for m in _all_merchants if m.get("category") not in _excl][:10]
+        top_merchants = [m for m in _all_merchants if m.get("category") not in _non_flex][:10]
     except Exception:
         top_merchants = []
 
@@ -168,25 +170,25 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
     week_number = (today.day - 1) // 7 + 1
     weeks_in_month = (days_in_month - 1) // 7 + 1
 
-    # Week-by-week cumulative breakdown (flex only — excludes fixed bills)
+    # Week-by-week cumulative breakdown (flex only)
     weekly_breakdown = database.get_month_weekly_breakdown(
         conn, today.year, today.month,
         exclude_categories=_excl, fixed_categories=_fixed_cats,
     )
 
-    # This week's top merchants (not monthly)
+    # This week's top merchants (flex only)
     week_merchants = database.get_weekly_merchants(
-        conn, week_ago.isoformat(), today.isoformat(), exclude_categories=_excl
+        conn, week_ago.isoformat(), today.isoformat(), exclude_categories=_non_flex
     )[:5]
 
-    # Last month's over-budget categories (for "start" phase advice)
+    # Last month's over-budget categories (for "start" phase advice — flex only)
     last_month_overbudget = []
     if month_phase == "start":
         try:
             prev_month = today.month - 1 if today.month > 1 else 12
             prev_year = today.year if today.month > 1 else today.year - 1
             for s in analytics.compute_budget_status(conn, f"{prev_year}-{prev_month:02d}"):
-                if s.category in _excl:
+                if s.category in _non_flex:
                     continue
                 if hasattr(s, "status") and s.status in ("over", "elevated"):
                     last_month_overbudget.append({"category": s.category, "status": s.status})
