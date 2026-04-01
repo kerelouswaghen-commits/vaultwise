@@ -52,16 +52,9 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
     # Month-to-date summary
     mtd_summary = database.get_monthly_summary(conn, today.year, today.month)
 
-    # Category breakdown this month — filtered to active categories only
-    _raw_breakdown = database.get_category_breakdown(
-        conn, month_start.isoformat(), today.isoformat()
-    )
-    try:
-        import category_engine
-        _active_cats = category_engine.get_active_categories(conn)
-        mtd_breakdown = [c for c in _raw_breakdown if c.get("category") in _active_cats]
-    except Exception:
-        mtd_breakdown = _raw_breakdown
+    # Category breakdown this month — same pipeline as dashboard (active + merged + muted)
+    from shared.filters import get_filtered_breakdown
+    mtd_breakdown = get_filtered_breakdown(conn, today.strftime("%Y-%m"))
 
     # Active alerts
     alerts = [dict(a) for a in database.get_active_alerts(conn)]
@@ -96,38 +89,29 @@ def gather_report_data(conn, report_date: Optional[date] = None, period: str = "
     except Exception:
         pass
 
-    # MTD total for scorecard (only net-negative categories = actual spending, not refunds)
-    mtd_total = sum(abs(c.get("total", 0)) for c in mtd_breakdown if c.get("total", 0) < 0) if mtd_breakdown else 0
-
-    # ── Dashboard-grade metrics (same math as home.py) ────────────
+    # ── Dashboard-grade metrics (IDENTICAL math to home.py) ────────
     import models
     from calendar import monthrange
+    from shared.filters import get_fixed_categories
+
+    # Income — respect bonus toggles (same as dashboard)
     income_data = models.get_income_for_month(today.year, today.month)
     monthly_income = income_data["total_income"] if isinstance(income_data, dict) else income_data
+    _bonus1_on = database.get_setting(conn, "bonus_toggle_1", "0") == "1"
+    _bonus2_on = database.get_setting(conn, "bonus_toggle_2", "0") == "1"
+    if not _bonus1_on:
+        monthly_income -= (income_data.get("kero_bonus", 0) if isinstance(income_data, dict) else 0)
+    if not _bonus2_on:
+        monthly_income -= (income_data.get("maggie_bonus", 0) if isinstance(income_data, dict) else 0)
 
+    # Fixed categories — single source of truth (shared with dashboard)
+    _fixed_cats = get_fixed_categories()
     fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
-    # Derive fixed categories from FIXED_BILL_GROUPS config (authoritative source)
-    _fixed_cats = set()
-    for _group_items in getattr(config, "FIXED_BILL_GROUPS", {}).values():
-        _fixed_cats.update(_group_items)
-    # Also include the common transaction-level category names that map to fixed bills
-    _fixed_cats.update({
-        "Housing & Utilities", "Debt Payments", "Giving & Church", "Family Support",
-        "Transportation", "Childcare & Education", "Phone & Internet", "Car Insurance",
-        "Daycare", "Church & Family", "Internet",
-    })
+
+    # MTD totals — same math as dashboard (category-level from filtered breakdown)
+    mtd_total = sum(abs(c.get("total", 0)) for c in mtd_breakdown) if mtd_breakdown else 0
     txn_fixed = sum(abs(c.get("total", 0)) for c in mtd_breakdown if c.get("category") in _fixed_cats)
-    # Flex spending = sum of expense transactions (amount < 0) excluding fixed & internal categories
-    # Computed at transaction level (not category-net) to match weekly breakdown exactly
-    _excl_for_flex = _fixed_cats | config.EXCLUDED_CATEGORIES
-    _flex_rows = conn.execute("""
-        SELECT SUM(amount) as total FROM transactions
-        WHERE date >= ? AND date <= ? AND amount < 0
-          AND category NOT IN ({})
-    """.format(",".join("?" for _ in _excl_for_flex)),
-        (month_start.isoformat(), today.isoformat(), *_excl_for_flex)
-    ).fetchone()
-    txn_discretionary = abs(_flex_rows["total"]) if _flex_rows and _flex_rows["total"] else 0
+    txn_discretionary = mtd_total - txn_fixed
     effective_fixed = max(fixed_costs, txn_fixed)
     total_outflow = effective_fixed + txn_discretionary
     savings_target_val = int(database.get_setting(conn, "monthly_savings_target", "2000"))

@@ -112,9 +112,8 @@ def home_page():
         _monthly_income -= _maggie_bonus_val
 
     _fixed_costs = sum(config.FIXED_MONTHLY_EXPENSES.values())
-    _fixed_cats = {"Housing & Utilities", "Debt Payments", "Family Support", "Transportation",
-                   "Phone & Internet", "Car Insurance"}
-    _fixed_cats.update(config.MONARCH_FIXED_MAP.keys())
+    from shared.filters import get_fixed_categories
+    _fixed_cats = get_fixed_categories()
     _muted_cats = set(getattr(config, 'MUTED_CATEGORIES', []))
 
     # Compute fixed vs discretionary from the already-filtered breakdown

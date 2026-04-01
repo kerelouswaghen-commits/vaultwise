@@ -215,6 +215,12 @@ def format_weekly_report_html(report_data: dict, **_kwargs) -> str:
         over_by = disc_spent - disc_budget
         lines.append(f"  Flex spent: ${disc_spent:,.0f}  [{bar}] {pct_label}")
         lines.append(f"  <b>${over_by:,.0f} OVER BUDGET</b>")
+        # Show realistic savings at current pace
+        realistic_saved = income - fixed - disc_spent
+        if realistic_saved > 0:
+            lines.append(f"  At current pace: saving ${realistic_saved:,.0f}/mo")
+        else:
+            lines.append(f"  At current pace: ${abs(realistic_saved):,.0f}/mo in the red")
         if days_left > 0:
             lines.append(f"  Freeze spending for {days_left} day{'s' if days_left != 1 else ''}")
     lines.append("")
@@ -303,10 +309,13 @@ def _format_middle_phase(lines: list, d: dict):
                     lines.append(f"  • {name}: ${total:,.0f}")
         lines.append("")
 
-    # Categories over pace
+    # Categories over pace (flex only)
     budget_statuses = d.get("budget_statuses", {})
+    fixed_cats = d.get("fixed_categories", set())
     flagged = []
     for cat, bs in budget_statuses.items():
+        if cat in fixed_cats:
+            continue
         status = bs.status if hasattr(bs, "status") else bs.get("status", "")
         if status in ("over", "elevated"):
             flagged.append(cat)
@@ -328,12 +337,15 @@ def _format_end_phase(lines: list, d: dict, saved: float, target: float):
         lines.append(f"  ${abs(saved):,.0f} over budget")
     lines.append("")
 
-    # Big wins
+    # Big wins (flex categories only — exclude fixed bills you don't control)
     trends = d.get("trends", {})
     breakdown = d.get("mtd_breakdown", [])
+    fixed_cats = d.get("fixed_categories", set())
     wins = []
     for cat_data in sorted(breakdown, key=lambda c: abs(c.get("total", 0)), reverse=True):
         cat = cat_data.get("category", "")
+        if cat in fixed_cats:
+            continue
         spent = abs(cat_data.get("total", 0))
         trend = trends.get(cat)
         if not trend or spent < 10:

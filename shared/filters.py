@@ -5,6 +5,18 @@ import category_engine
 import database
 
 
+def get_fixed_categories() -> set:
+    """Single source of truth for fixed (non-discretionary) transaction categories.
+
+    Used by both the dashboard (home.py) and the Telegram report (reports.py)
+    to ensure identical fixed vs flex classification.
+    """
+    cats = {"Housing & Utilities", "Debt Payments", "Family Support",
+            "Transportation", "Phone & Internet", "Car Insurance"}
+    cats.update(getattr(config, 'MONARCH_FIXED_MAP', {}).keys())
+    return cats
+
+
 def get_filtered_breakdown(conn, month_key: str) -> list[dict]:
     """Get monthly category breakdown with muted/merged/excluded filtering applied.
 
