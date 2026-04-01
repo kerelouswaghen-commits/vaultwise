@@ -1157,16 +1157,25 @@ def get_fixed_expense_overrides(conn) -> dict:
 
 
 def get_effective_fixed_total(conn) -> float:
-    """Returns total fixed: uses overrides where set, last-month actuals otherwise."""
+    """Returns total fixed: uses overrides where set, last-month actuals otherwise.
+
+    Falls back to config.FIXED_MONTHLY_EXPENSES as a floor — if not all accounts
+    are in Monarch yet, we still know the real fixed bills from config.
+    """
+    import config
     last_month = get_last_month_fixed(conn)
     overrides = get_fixed_expense_overrides(conn)
 
     # Merge: override takes precedence, fallback to last month actual
     all_cats = set(last_month.keys()) | set(overrides.keys())
-    total = 0.0
+    db_total = 0.0
     for cat in all_cats:
-        total += overrides.get(cat, last_month.get(cat, 0))
-    return round(total, 2)
+        db_total += overrides.get(cat, last_month.get(cat, 0))
+
+    # Config floor: known fixed bills even if not all in Monarch yet
+    config_total = sum(getattr(config, "FIXED_MONTHLY_EXPENSES", {}).values())
+
+    return round(max(db_total, config_total), 2)
 
 
 def get_effective_fixed_detail(conn) -> list:
