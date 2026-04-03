@@ -85,6 +85,10 @@ MIGRATIONS = [
         "id": "008_seed_fixed_categories",
         "sql": None,  # Handled in run_pending with Python logic
     },
+    {
+        "id": "009_fix_fixed_category_types",
+        "sql": None,  # Retroactively fix categories wrongly registered as flex
+    },
 ]
 
 
@@ -124,27 +128,51 @@ def run_pending(conn: sqlite3.Connection) -> list[str]:
                 pass  # Column already exists
 
         elif mid == "008_seed_fixed_categories":
-            # Seed category_config with fixed categories from config if empty
+            # Seed category_config with fixed categories from config
+            # Uses upsert to override any wrongly-registered flex entries
             try:
                 import config as _cfg
-                _existing = conn.execute("SELECT COUNT(*) FROM category_config WHERE type = 'fix'").fetchone()[0]
-                if _existing == 0 and hasattr(_cfg, "FIXED_MONTHLY_EXPENSES"):
+                if hasattr(_cfg, "FIXED_MONTHLY_EXPENSES"):
                     _sort = 10
                     for _name, _budget in _cfg.FIXED_MONTHLY_EXPENSES.items():
                         conn.execute(
-                            "INSERT OR IGNORE INTO category_config (name, type, monthly_budget, sort_order) VALUES (?, 'fix', ?, ?)",
+                            "INSERT INTO category_config (name, type, monthly_budget, sort_order) VALUES (?, 'fix', ?, ?) "
+                            "ON CONFLICT(name) DO UPDATE SET type='fix', monthly_budget=excluded.monthly_budget, sort_order=excluded.sort_order",
                             (_name, _budget, _sort),
                         )
                         _sort += 1
-                    # Also seed muted/excluded categories
                     for _muted in getattr(_cfg, "MUTED_CATEGORIES", []):
                         conn.execute(
-                            "INSERT OR IGNORE INTO category_config (name, type) VALUES (?, 'exclude')",
+                            "INSERT INTO category_config (name, type) VALUES (?, 'exclude') "
+                            "ON CONFLICT(name) DO UPDATE SET type='exclude'",
                             (_muted,),
                         )
                     conn.commit()
             except Exception:
-                pass  # Config not available or table issue
+                pass
+
+        elif mid == "009_fix_fixed_category_types":
+            # Retroactive fix: any category in FIXED_MONTHLY_EXPENSES that was
+            # wrongly auto-registered as 'flex' by ensure_category_config gets
+            # corrected to 'fix' with proper budget
+            try:
+                import config as _cfg
+                if hasattr(_cfg, "FIXED_MONTHLY_EXPENSES"):
+                    _sort = 10
+                    for _name, _budget in _cfg.FIXED_MONTHLY_EXPENSES.items():
+                        conn.execute(
+                            "UPDATE category_config SET type='fix', monthly_budget=? WHERE name=? AND type != 'fix'",
+                            (_budget, _name),
+                        )
+                        _sort += 1
+                    for _muted in getattr(_cfg, "MUTED_CATEGORIES", []):
+                        conn.execute(
+                            "UPDATE category_config SET type='exclude' WHERE name=? AND type != 'exclude'",
+                            (_muted,),
+                        )
+                    conn.commit()
+            except Exception:
+                pass
 
         elif migration["sql"]:
             conn.executescript(migration["sql"])
