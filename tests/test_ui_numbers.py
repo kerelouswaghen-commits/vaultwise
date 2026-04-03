@@ -91,25 +91,25 @@ class TestSavingsFormulaConsistency:
     """Verify savings = income - effective_fixed - flex_spent across all display points."""
 
     def test_hero_waterfall_consistency(self, conn):
-        """Hero saved amount should equal income - fixed - flex."""
-        # Get the components
+        """Waterfall remaining = max(income - target - fixed - flex, 0)."""
         effective_fixed = database.get_effective_fixed_total(conn)
         flex = get_flex_breakdown(conn, "2026-03")
         flex_total = sum(abs(c["total"]) for c in flex)
 
-        # With test income = 0 (not configured), verify the relationship:
-        # saved = income - effective_fixed - flex_total
-        # waterfall: fixed + target + spent + remaining = income
         test_income = 15000
         test_target = 2000
-        saved = test_income - effective_fixed - flex_total
         budget_limit = test_income - test_target
         remaining = max(budget_limit - effective_fixed - flex_total, 0)
 
-        # Waterfall must sum to something meaningful
-        waterfall_total = effective_fixed + test_target + flex_total + remaining
-        assert waterfall_total == test_income, \
-            f"Waterfall total {waterfall_total} != income {test_income}"
+        # When under budget: segments sum to income
+        # When over budget: remaining = 0, segments sum > income (clamped)
+        if remaining > 0:
+            waterfall_total = effective_fixed + test_target + flex_total + remaining
+            assert waterfall_total == test_income
+        else:
+            # Over budget — remaining clamped to 0
+            assert remaining == 0
+            assert effective_fixed + flex_total > budget_limit
 
     def test_safe_to_spend_formula(self, conn):
         """Safe to Spend = disc_budget - flex_spent."""

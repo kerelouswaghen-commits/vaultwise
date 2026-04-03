@@ -204,7 +204,20 @@ def inject_css():
         [data-testid="stSidebarCollapsedControl"] { display: none !important; }
         .main .block-container { max-width: 100% !important; }
     }
-    [data-testid="stHorizontalBlock"] { flex-wrap: wrap; gap: 4px; }
+    [data-testid="stHorizontalBlock"] { gap: 4px; }
+
+    /* Segmented control (nav) — force all tabs in one row */
+    [data-testid="stSegmentedControl"] {
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        gap: 0 !important;
+    }
+    [data-testid="stSegmentedControl"] button {
+        white-space: nowrap !important;
+        padding: 6px 8px !important;
+        font-size: clamp(11px, 2.5vw, 13px) !important;
+        min-height: 36px !important;
+    }
 
     /* Top nav pill bar — force single row on all screen sizes */
     .nav-bar [data-testid="stHorizontalBlock"] {

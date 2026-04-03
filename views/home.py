@@ -77,20 +77,11 @@ def home_page():
     # ═══════════════════════════════════════════════════════════════
     # 1. MONTH NAV
     # ═══════════════════════════════════════════════════════════════
-    _nav_l, _nav_r = st.columns([3, 2])
-    with _nav_r:
-        _nr1, _nr2 = st.columns([3, 1])
-        with _nr1:
-            selected_month = st.selectbox(
-                "Month", available_months, index=0,
-                format_func=lambda m: f"{_mn[int(m.split('-')[1])]} {m.split('-')[0]}",
-                label_visibility="collapsed",
-            )
-        with _nr2:
-            _dark_on = st.toggle("🌙", value=st.session_state.get("dark_mode", False), key="home_dark")
-            if _dark_on != st.session_state.get("dark_mode", False):
-                st.session_state.dark_mode = _dark_on
-                st.rerun()
+    selected_month = st.selectbox(
+        "Month", available_months, index=0,
+        format_func=lambda m: f"{_mn[int(m.split('-')[1])]} {m.split('-')[0]}",
+        label_visibility="collapsed",
+    )
     _y, _m = selected_month.split("-")
     _sel_year, _sel_month = int(_y), int(_m)
     month_display = f"{_mn[_sel_month]} {_y}"

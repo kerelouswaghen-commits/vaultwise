@@ -157,7 +157,7 @@ def render_category_card(cat_data, trend_d, conn, claude_actions, selected_month
         _h_median = t_current
         _h_months = 0
 
-        if len(history) >= 2:
+        if len(history) >= 1:
             hist_df = pd.DataFrame(list(reversed(history)))
             hist_df["total"] = hist_df["total"].abs()
 
