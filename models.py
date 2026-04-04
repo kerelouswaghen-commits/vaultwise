@@ -77,37 +77,22 @@ def get_income_for_month(year: int, month: int) -> dict:
     Secondary earner: base from config, with annual raise step-ups
     Bonuses: spread monthly (always included)
     """
-    # Get income keys dynamically (handles missing config gracefully)
-    _income_keys = [k for k, v in config.INCOME.items() if isinstance(v, dict) and "monthly_net" in v]
-    if len(_income_keys) < 2:
-        # Fallback: no detailed income config — use combined_monthly_take_home
-        _combined = config.INCOME.get("combined_monthly_take_home", 0)
-        return {
-            "kero_net": _combined // 2,
-            "maggie_net": _combined // 2,
-            "kero_bonus": 0,
-            "maggie_bonus": 0,
-            "total_income": _combined,
-        }
-
-    _k1, _k2 = _income_keys[0], _income_keys[1]
-
     # Primary earner net pay: base from config with step-ups
-    kero_base = config.INCOME[_k1]["monthly_net"]
-    raise_amt = int(config.INCOME[_k1].get("annual_raise", 0) * 0.057)
+    kero_base = config.INCOME["kero"]["monthly_net"]  # 10,617
+    raise_amt = int(config.INCOME["kero"]["annual_raise"] * 0.057)  # ~$285/mo net from $5K gross
     for yr in range(2027, year + 1):
-        if (year, month) >= (yr, config.INCOME[_k1].get("raise_month", 13)):
+        if (year, month) >= (yr, config.INCOME["kero"]["raise_month"]):
             kero_base += raise_amt
 
     # Secondary earner net pay: base from config with step-ups
-    maggie_base = config.INCOME[_k2]["monthly_net"]
-    raise_amt_m = int(config.INCOME[_k2].get("annual_raise", 0) * 0.055)
+    maggie_base = config.INCOME["maggie"]["monthly_net"]  # 7,746
+    raise_amt_m = int(config.INCOME["maggie"]["annual_raise"] * 0.055)  # ~$220/mo net from $4K gross
     for yr in range(2027, year + 1):
-        if (year, month) >= (yr, config.INCOME[_k2].get("raise_month", 13)):
+        if (year, month) >= (yr, config.INCOME["maggie"]["raise_month"]):
             maggie_base += raise_amt_m
 
-    kero_bonus = config.INCOME[_k1].get("bonus_spread_monthly", 0)
-    maggie_bonus = config.INCOME[_k2].get("bonus_spread_monthly", 0)
+    kero_bonus = 1_500
+    maggie_bonus = 417
     total = kero_base + maggie_base + kero_bonus + maggie_bonus
 
     return {
