@@ -85,8 +85,6 @@ def home_page():
     _y, _m = selected_month.split("-")
     _sel_year, _sel_month = int(_y), int(_m)
     month_display = f"{_mn[_sel_month]} {_y}"
-    with _nav_l:
-        st.markdown(f'<div style="font-size:20px;font-weight:700;letter-spacing:-0.3px;color:{_TX};padding-top:6px;">{month_display}</div>', unsafe_allow_html=True)
 
     # Apply merchant overrides
     _overrides = getattr(config, 'MERCHANT_CATEGORY_OVERRIDES', {})

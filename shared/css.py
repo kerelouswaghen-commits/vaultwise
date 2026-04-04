@@ -206,17 +206,23 @@ def inject_css():
     }
     [data-testid="stHorizontalBlock"] { gap: 4px; }
 
-    /* Segmented control (nav) — force all tabs in one row */
-    [data-testid="stSegmentedControl"] {
+    /* Segmented control (nav) — force ALL 5 tabs in one row on any screen */
+    [data-testid="stSegmentedControl"],
+    [data-testid="stSegmentedControl"] > div,
+    [data-testid="stSegmentedControl"] [role="tablist"] {
         flex-wrap: nowrap !important;
         overflow-x: auto !important;
+        display: flex !important;
         gap: 0 !important;
+        width: 100% !important;
     }
     [data-testid="stSegmentedControl"] button {
         white-space: nowrap !important;
-        padding: 6px 8px !important;
-        font-size: clamp(11px, 2.5vw, 13px) !important;
-        min-height: 36px !important;
+        padding: 4px 6px !important;
+        font-size: clamp(10px, 2.2vw, 13px) !important;
+        min-height: 34px !important;
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
     }
 
     /* Top nav pill bar — force single row on all screen sizes */
