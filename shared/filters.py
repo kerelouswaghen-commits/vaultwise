@@ -14,8 +14,20 @@ import database
 
 
 def _get_config_fixed() -> set:
-    """Categories from config.FIXED_MONTHLY_EXPENSES — always treated as fixed."""
-    return set(getattr(_cfg, 'FIXED_MONTHLY_EXPENSES', {}).keys())
+    """Categories that should ALWAYS be treated as fixed.
+
+    Sources:
+    1. config.FIXED_MONTHLY_EXPENSES keys (curated list)
+    2. config.MONARCH_FIXED_MAP keys (Monarch categories mapped to fixed)
+    3. config.CATEGORY_MERGES sources (categories merged into fixed ones)
+    """
+    result = set(getattr(_cfg, 'FIXED_MONTHLY_EXPENSES', {}).keys())
+    # Monarch categories mapped to fixed bills
+    result |= set(getattr(_cfg, 'MONARCH_FIXED_MAP', {}).keys())
+    # Categories merged into other categories (e.g. "Education" merged into "Daycare")
+    for _merge_sources in getattr(_cfg, 'CATEGORY_MERGES', {}).values():
+        result |= set(_merge_sources)
+    return result
 
 
 def get_fixed_categories(conn) -> set:
