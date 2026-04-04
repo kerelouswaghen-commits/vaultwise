@@ -1246,8 +1246,7 @@ def get_effective_fixed_total(conn) -> float:
 
     The budget floor comes from the user's curated config (config_private.py),
     NOT the category_config DB table which may have duplicates/orphans.
-    Per-category: uses max(actual_last_month, config_budget) to handle
-    months where a bill hasn't posted yet.
+    Falls back to DB category_config if config is empty (cloud without secrets).
     """
     import config as _cfg
     config_fixed = getattr(_cfg, 'FIXED_MONTHLY_EXPENSES', {})
@@ -1255,16 +1254,33 @@ def get_effective_fixed_total(conn) -> float:
     last_month = get_last_month_fixed(conn)
     overrides = get_fixed_expense_overrides(conn)
 
-    total = 0.0
-    for cat, budget in config_fixed.items():
-        # Priority: override > last month actual > config budget
-        if cat in overrides:
-            total += overrides[cat]
-        else:
-            actual = last_month.get(cat, 0)
-            total += max(actual, budget)
-
-    return round(total, 2)
+    if config_fixed:
+        # Use config as source of truth
+        total = 0.0
+        for cat, budget in config_fixed.items():
+            if cat in overrides:
+                total += overrides[cat]
+            else:
+                actual = last_month.get(cat, 0)
+                total += max(actual, budget)
+        return round(total, 2)
+    else:
+        # Fallback: use DB category_config (active fixed categories only)
+        active_fixed = set(
+            r[0] for r in conn.execute("""
+                SELECT DISTINCT t.category FROM transactions t
+                JOIN category_config cc ON t.category = cc.name
+                WHERE cc.type = 'fix' AND t.amount < 0
+                  AND t.date >= date('now', '-3 months')
+            """).fetchall()
+        )
+        budget_floor = sum(
+            r["monthly_budget"] or 0 for r in get_all_category_config(conn)
+            if r["type"] == "fix" and r["name"] in active_fixed
+        )
+        all_cats = set(last_month.keys()) | set(overrides.keys())
+        db_total = sum(overrides.get(c, last_month.get(c, 0)) for c in all_cats)
+        return round(max(db_total, budget_floor), 2)
 
 
 def get_effective_fixed_detail(conn) -> list:
@@ -1278,8 +1294,15 @@ def get_effective_fixed_detail(conn) -> list:
 
     last_month = get_last_month_fixed(conn)
     overrides = get_fixed_expense_overrides(conn)
-    budgets = dict(config_fixed)
-    # Only include categories from config — single source of truth
+
+    # Use config if available, fallback to DB
+    if not config_fixed:
+        config_fixed = {
+            r["name"]: r["monthly_budget"] or 0
+            for r in get_all_category_config(conn)
+            if r["type"] == "fix" and r["monthly_budget"]
+        }
+
     result = []
     for cat, budget in sorted(config_fixed.items()):
         lm = last_month.get(cat, 0)

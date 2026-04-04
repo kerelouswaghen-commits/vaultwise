@@ -73,6 +73,8 @@ if not hasattr(_this, "EXTRACTION_CONTEXT"):
     EXTRACTION_CONTEXT = ""
 if not hasattr(_this, "SAVINGS_LEVER_CONTEXT"):
     SAVINGS_LEVER_CONTEXT = ""
+if not hasattr(_this, "FIXED_MONTHLY_EXPENSES"):
+    FIXED_MONTHLY_EXPENSES = {}
 
 # ---------------------------------------------------------------------------
 # Computed values from private data
