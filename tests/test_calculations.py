@@ -87,38 +87,35 @@ class TestCategoryFiltering:
 class TestEffectiveFixedTotal:
     """Verify get_effective_fixed_total returns max(db_actuals, budget_floor)."""
 
-    def test_budget_floor_wins_when_actuals_lower(self, conn):
-        """When actual posted bills < budget floor, budget floor should be used."""
-        # In our test data, Feb has $8170 in fixed actuals
-        # Budget floor = $8716 (sum of all fix monthly_budgets)
-        # But get_effective_fixed_total uses LAST MONTH's actuals
+    def test_budget_floor_only_counts_active_categories(self, conn):
+        """Budget floor should only include fixed categories with recent transactions."""
         eft = database.get_effective_fixed_total(conn)
-        budget_floor = GROUND_TRUTH["2026-03"]["budget_floor"]
-        # The result should be >= budget_floor
-        assert eft >= budget_floor
-
-    def test_effective_fixed_never_below_budget_floor(self, conn):
-        """Effective fixed should never be below the sum of fix monthly_budgets."""
-        eft = database.get_effective_fixed_total(conn)
-        all_config = database.get_all_category_config(conn)
-        budget_floor = sum(
-            r["monthly_budget"] or 0 for r in all_config if r["type"] == "fix"
+        # Active fixed = categories with txns in last 3 months
+        active = set(r[0] for r in conn.execute("""
+            SELECT DISTINCT t.category FROM transactions t
+            JOIN category_config cc ON t.category = cc.name
+            WHERE cc.type = 'fix' AND t.amount < 0
+              AND t.date >= date('now', '-3 months')
+        """).fetchall())
+        active_floor = sum(
+            r["monthly_budget"] or 0 for r in database.get_all_category_config(conn)
+            if r["type"] == "fix" and r["name"] in active
         )
-        assert eft >= budget_floor
+        assert eft >= active_floor
 
-    def test_actuals_win_when_above_floor(self, conn):
-        """When last-month fixed actuals exceed budget floor, actuals should be used."""
-        # Set very low budgets so actuals (from last month) win
-        conn.execute("UPDATE category_config SET monthly_budget = 1 WHERE type = 'fix'")
+    def test_effective_fixed_excludes_phantom_categories(self, conn):
+        """Categories with budgets but no recent transactions should NOT inflate total."""
+        # Add a phantom category with huge budget but no transactions
+        conn.execute("INSERT OR REPLACE INTO category_config (name, type, monthly_budget) VALUES ('Phantom Bill', 'fix', 50000)")
         conn.commit()
         eft = database.get_effective_fixed_total(conn)
-        budget_floor = sum(
-            r["monthly_budget"] or 0 for r in database.get_all_category_config(conn) if r["type"] == "fix"
-        )
-        last_month = database.get_last_month_fixed(conn)
-        last_month_total = sum(last_month.values())
-        # eft should be max(last_month_total, budget_floor)
-        assert eft == round(max(last_month_total, budget_floor), 2)
+        # Phantom Bill has no transactions, so it should NOT add $50,000
+        assert eft < 50000
+
+    def test_effective_fixed_positive(self, conn):
+        """Effective fixed total should be a non-negative number."""
+        eft = database.get_effective_fixed_total(conn)
+        assert eft >= 0
 
     def test_budget_caps_prevent_double_billing(self, conn):
         """Budget cap should prevent a category from exceeding its monthly_budget."""

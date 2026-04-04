@@ -868,7 +868,7 @@ def delete_setting(conn, key: str) -> None:
 
 # ── Gap Closer Cache ─────────────────────────────────────────────────────
 
-def get_gap_closer_cache(conn, month: str, gap_amount: float) -> dict | None:
+def get_gap_closer_cache(conn, month: str, gap_amount: float):
     """Retrieve cached gap closer result from DB. Returns None if stale (>24h)."""
     import json
     key = f"gap_closer_{month}_{gap_amount:.0f}"
@@ -895,7 +895,7 @@ def set_gap_closer_cache(conn, month: str, gap_amount: float, result: dict):
 
 # ── Budget Coach Cache ───────────────────────────────────────────────
 
-def get_coach_cache(conn, mode: str, month: str, data_hash: str) -> dict | None:
+def get_coach_cache(conn, mode: str, month: str, data_hash: str):
     """Retrieve cached coach result. Returns None if stale (>24h)."""
     import json
     key = f"coach_{mode}_{month}_{data_hash}"
@@ -1242,59 +1242,53 @@ def get_fixed_expense_overrides(conn) -> dict:
 
 
 def get_effective_fixed_total(conn) -> float:
-    """Returns total fixed: uses overrides where set, last-month actuals otherwise.
+    """Returns total fixed: uses config.FIXED_MONTHLY_EXPENSES as the source of truth.
 
-    Falls back to sum of monthly_budget from category_config as a floor — ensures
-    fixed bills are never under-estimated even if transactions haven't posted yet.
+    The budget floor comes from the user's curated config (config_private.py),
+    NOT the category_config DB table which may have duplicates/orphans.
+    Per-category: uses max(actual_last_month, config_budget) to handle
+    months where a bill hasn't posted yet.
     """
+    import config as _cfg
+    config_fixed = getattr(_cfg, 'FIXED_MONTHLY_EXPENSES', {})
+
     last_month = get_last_month_fixed(conn)
     overrides = get_fixed_expense_overrides(conn)
 
-    # Merge: override takes precedence, fallback to last month actual
-    all_cats = set(last_month.keys()) | set(overrides.keys())
-    db_total = 0.0
-    for cat in all_cats:
-        db_total += overrides.get(cat, last_month.get(cat, 0))
+    total = 0.0
+    for cat, budget in config_fixed.items():
+        # Priority: override > last month actual > config budget
+        if cat in overrides:
+            total += overrides[cat]
+        else:
+            actual = last_month.get(cat, 0)
+            total += max(actual, budget)
 
-    # Budget floor: sum of monthly_budget for all fixed categories
-    budget_floor = sum(
-        r["monthly_budget"] or 0
-        for r in get_all_category_config(conn)
-        if r["type"] == "fix"
-    )
-
-    return round(max(db_total, budget_floor), 2)
+    return round(total, 2)
 
 
 def get_effective_fixed_detail(conn) -> list:
     """Returns per-category fixed detail: [{name, last_month, override, effective, budget}, ...].
 
-    Includes categories with a monthly_budget even if they have no transactions
-    (e.g. mortgage paid outside Monarch).
+    Uses config.FIXED_MONTHLY_EXPENSES as the single source of truth — same as
+    get_effective_fixed_total() to ensure consistency across all analysis.
     """
+    import config as _cfg
+    config_fixed = getattr(_cfg, 'FIXED_MONTHLY_EXPENSES', {})
+
     last_month = get_last_month_fixed(conn)
     overrides = get_fixed_expense_overrides(conn)
-    # Also include fixed categories with a budget set (even if no transactions)
-    budgets = {
-        r["name"]: r["monthly_budget"]
-        for r in get_all_category_config(conn)
-        if r["type"] == "fix" and r["monthly_budget"]
-    }
-    all_cats = sorted(set(last_month.keys()) | set(overrides.keys()) | set(budgets.keys()))
+    budgets = dict(config_fixed)
+    # Only include categories from config — single source of truth
     result = []
-    for cat in all_cats:
+    for cat, budget in sorted(config_fixed.items()):
         lm = last_month.get(cat, 0)
         ov = overrides.get(cat)
-        budget = budgets.get(cat)
-        # Priority: override > last month actual > budget
+        # Priority: override > max(actual, budget)
         if ov is not None:
             effective = ov
-        elif lm > 0:
-            effective = lm
-        elif budget:
-            effective = budget
         else:
-            effective = 0
+            effective = max(lm, budget)
         result.append({
             "name": cat,
             "last_month": lm,
