@@ -47,6 +47,12 @@ if not os.path.exists(_private_path):
         _mod.FIXED_MONTHLY_EXPENSES = {}
         _mod.MONTHLY_EXPENSES = 0
         _mod.CC_MONTHLY_AVERAGE = 0
+        _mod.OBJECTIVES = []
+        _mod.ACCOUNTS = {}
+        _mod.FAMILY = {}
+        _mod.TELEGRAM_USERS = {}
+        _mod.SAVINGS_LEVERS = []
+        _mod.TOTAL_POTENTIAL_MONTHLY_SAVINGS = 0
         _sys.modules["config_private"] = _mod
 
 from config_private import *  # noqa: F401, F403
@@ -92,6 +98,18 @@ if not hasattr(_this, "SAVINGS_LEVER_CONTEXT"):
     SAVINGS_LEVER_CONTEXT = ""
 if not hasattr(_this, "FIXED_MONTHLY_EXPENSES"):
     FIXED_MONTHLY_EXPENSES = {}
+if not hasattr(_this, "OBJECTIVES"):
+    OBJECTIVES = []
+if not hasattr(_this, "ACCOUNTS"):
+    ACCOUNTS = {}
+if not hasattr(_this, "FAMILY"):
+    FAMILY = {}
+if not hasattr(_this, "TELEGRAM_USERS"):
+    TELEGRAM_USERS = {}
+if not hasattr(_this, "SAVINGS_LEVERS"):
+    SAVINGS_LEVERS = []
+if not hasattr(_this, "TOTAL_POTENTIAL_MONTHLY_SAVINGS"):
+    TOTAL_POTENTIAL_MONTHLY_SAVINGS = 0
 
 # ---------------------------------------------------------------------------
 # Computed values from private data
