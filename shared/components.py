@@ -157,7 +157,7 @@ def render_category_card(cat_data, trend_d, conn, claude_actions, selected_month
         _h_median = t_current
         _h_months = 0
 
-        if len(history) >= 1:
+        if len(history) >= 2:
             hist_df = pd.DataFrame(list(reversed(history)))
             hist_df["total"] = hist_df["total"].abs()
 
@@ -240,6 +240,20 @@ def render_category_card(cat_data, trend_d, conn, claude_actions, selected_month
                 f'</div>'
             )
             st.markdown(_stats_html, unsafe_allow_html=True)
+
+        elif len(history) == 1:
+            # Single month — show a simple summary instead of a broken chart
+            _single_amt = abs(history[0]["total"])
+            _single_mo = history[0]["month"]
+            st.markdown(
+                f'<div style="text-align:center;padding:16px;background:var(--vw-card-bg-alt);border-radius:12px;margin-bottom:8px;">'
+                f'<div style="font-size:10px;color:var(--vw-text-faint);text-transform:uppercase;letter-spacing:0.5px;">Only 1 month of data</div>'
+                f'<div style="font-size:24px;font-weight:700;color:{sev["color"]};margin:4px 0;">${_single_amt:,.0f}</div>'
+                f'<div style="font-size:12px;color:var(--vw-text-muted);">{_single_mo}</div>'
+                f'<div style="font-size:11px;color:var(--vw-text-faint);margin-top:6px;">Need 2+ months for trend chart</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
         col_info, col_action = st.columns([1, 1])
 
