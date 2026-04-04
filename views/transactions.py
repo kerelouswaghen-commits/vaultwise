@@ -56,7 +56,8 @@ _TAG_PILLS = {
 
 def _upload_section(conn, coverage):
     """Upload statements logic — extracted so it can live in an expander."""
-    coverage = database.get_account_coverage(conn)
+    if coverage is None:
+        coverage = database.get_account_coverage(conn)
     if coverage:
         all_months_covered = set()
         all_earliest, all_latest = None, None
@@ -429,23 +430,29 @@ def transactions_page():
 
     _search_q = st.text_input("🔍 Search transactions", placeholder="Search merchants, categories...", label_visibility="collapsed")
 
-    _fc1, _fc2, _fc3, _fc4 = st.columns([2, 2, 2, 1.5])
+    _fc1, _fc2 = st.columns(2)
     with _fc1:
         start = st.date_input("From", value=date.fromisoformat(date_range[0]) if date_range[0] else date.today() - timedelta(days=90), label_visibility="collapsed")
     with _fc2:
         end = st.date_input("To", value=date.fromisoformat(date_range[1]) if date_range[1] else date.today(), label_visibility="collapsed")
-    with _fc3:
-        _acct_options = ["All Accounts"] + [config.ACCOUNTS.get(a, {}).get("label", a) for a in config.ACCOUNTS]
-        _acct_keys = ["All"] + list(config.ACCOUNTS.keys())
-        _acct_idx = st.selectbox("Account", range(len(_acct_options)), format_func=lambda i: _acct_options[i], label_visibility="collapsed")
-        acct = _acct_keys[_acct_idx]
-    with _fc4:
-        hide_transfers = st.checkbox("Hide transfers", value=True)
 
-    _cat_options = ["All Categories"] + active_categories
-    cat = st.selectbox("Category", _cat_options, label_visibility="collapsed")
-    if cat == "All Categories":
-        cat = "All"
+    _fc3, _fc4 = st.columns(2)
+    with _fc3:
+        _acct_ids = ["All"] + list(config.ACCOUNTS.keys())
+        def _fmt_acct(a):
+            if a == "All":
+                return "All Accounts"
+            return config.ACCOUNTS.get(a, {}).get("label", a)
+        acct = st.selectbox("Account", _acct_ids, format_func=_fmt_acct, label_visibility="collapsed")
+    with _fc4:
+        _cat_list = ["All"] + active_categories
+        def _fmt_cat(c):
+            if c == "All":
+                return "All Categories"
+            return c
+        cat = st.selectbox("Category", _cat_list, format_func=_fmt_cat, label_visibility="collapsed")
+
+    hide_transfers = st.checkbox("Hide transfers & CC payments", value=True)
 
     # ══════════════════════════════════════════════════════════════════
     # 2. FETCH & FILTER DATA
@@ -567,7 +574,8 @@ def transactions_page():
         render_txn_group_v2(_date_label, _daily_total, _txn_rows)
         _group_count += 1
 
-    _remaining = len(_grouped) - 30
+    _total_groups = len(df_sorted["date"].unique())
+    _remaining = _total_groups - 30
     if _remaining > 0:
         if st.button(f"Show {_remaining} more date groups"):
             _extra_count = 0

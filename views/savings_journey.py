@@ -319,56 +319,55 @@ def savings_journey_page():
 
     # Main 5 category sliders (inside the container)
     with _slider_container:
-      for i, (cat, typical) in enumerate(_main_cats):
-        _key = f"plan_slider_{cat}"
-        _floor = _cat_mins.get(cat, 0)
-        # Initialize slider key in session state if not already set
-        if _key not in st.session_state:
-            _init = st.session_state.plan_targets.get(cat, typical)
-            st.session_state[_key] = max(_floor, min(_init, typical))
-        _current = min(st.session_state[_key], typical)  # clamp if avg dropped
-        st.session_state[_key] = _current
-        _color = _CAT_COLORS[i % len(_CAT_COLORS)]
+        for i, (cat, typical) in enumerate(_main_cats):
+            _key = f"plan_slider_{cat}"
+            _floor = _cat_mins.get(cat, 0)
+            if _key not in st.session_state:
+                _init = st.session_state.plan_targets.get(cat, typical)
+                st.session_state[_key] = max(_floor, min(_init, typical))
+            _current = min(st.session_state[_key], typical)
+            st.session_state[_key] = _current
+            _color = _CAT_COLORS[i % len(_CAT_COLORS)]
 
-        _cut_preview = typical - _current
-        _badge = ""
-        if _cut_preview > 0:
-            _badge = (
-                f'<span style="font-size:11px;font-weight:600;color:#0d9488;'
-                f'background:#f0fdfa;padding:2px 6px;border-radius:4px;'
-                f'margin-left:6px;">−${_cut_preview:,}</span>'
+            _cut_preview = typical - _current
+            _badge = ""
+            if _cut_preview > 0:
+                _badge = (
+                    f'<span style="font-size:11px;font-weight:600;color:#0d9488;'
+                    f'background:#f0fdfa;padding:2px 6px;border-radius:4px;'
+                    f'margin-left:6px;">−${_cut_preview:,}</span>'
+                )
+            _val_color = "#0d9488" if _current < typical else "#64748b"
+            st.markdown(
+                f'<div style="display:flex;align-items:center;'
+                f'justify-content:space-between;margin-bottom:-10px;'
+                f'margin-top:8px;">'
+                f'<div style="display:flex;align-items:center;">'
+                f'<span style="width:10px;height:10px;border-radius:50%;'
+                f'background:{_color};display:inline-block;margin-right:6px;'
+                f'flex-shrink:0;"></span>'
+                f'<span style="font-size:13px;font-weight:500;color:var(--vw-text);">'
+                f'{cat}</span>'
+                f'<span data-slider-val="{cat}" style="font-size:13px;font-weight:700;color:{_val_color};'
+                f'margin-left:8px;">${_current:,}</span></div>'
+                f'<div style="display:flex;align-items:center;">'
+                f'<span style="font-size:11px;color:#94a3b8;">'
+                f'of ${typical:,}</span>'
+                f'{_badge}</div></div>',
+                unsafe_allow_html=True,
             )
-        _val_color = "#0d9488" if _current < typical else "#64748b"
-        st.markdown(
-            f'<div style="display:flex;align-items:center;'
-            f'justify-content:space-between;margin-bottom:-10px;'
-            f'margin-top:8px;">'
-            f'<div style="display:flex;align-items:center;">'
-            f'<span style="width:10px;height:10px;border-radius:50%;'
-            f'background:{_color};display:inline-block;margin-right:6px;'
-            f'flex-shrink:0;"></span>'
-            f'<span style="font-size:13px;font-weight:500;color:var(--vw-text);">'
-            f'{cat}</span>'
-            f'<span data-slider-val="{cat}" style="font-size:13px;font-weight:700;color:{_val_color};'
-            f'margin-left:8px;">${_current:,}</span></div>'
-            f'<div style="display:flex;align-items:center;">'
-            f'<span style="font-size:11px;color:#94a3b8;">'
-            f'of ${typical:,}</span>'
-            f'{_badge}</div></div>',
-            unsafe_allow_html=True,
-        )
 
-        val = st.slider(
-            label=cat,
-            min_value=_floor,
-            max_value=typical,
-            step=25,
-            key=_key,
-            label_visibility="collapsed",
-        )
-        st.session_state.plan_targets[cat] = val
-        _total_planned += val
-        _slider_results.append((cat, typical, val, i))
+            val = st.slider(
+                label=cat,
+                min_value=_floor,
+                max_value=typical,
+                step=25,
+                key=_key,
+                label_visibility="collapsed",
+            )
+            st.session_state.plan_targets[cat] = val
+            _total_planned += val
+            _slider_results.append((cat, typical, val, i))
 
     # Extra categories behind expander
     if _extra_cats:
