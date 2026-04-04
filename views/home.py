@@ -165,7 +165,9 @@ def home_page():
     else:
         _proj_text = ""
 
-    # 6-month sparkline data
+    # 6-month sparkline data — OPTIMIZED: single bulk query for flex totals
+    _monthly_flex = database.get_monthly_flex_totals(conn, months=7)
+    _monthly_flex_map = {r["month"]: r["flex_total"] for r in _monthly_flex}
     _spark_data = []
     for _ym in available_months[:6]:
         _sy, _sm = int(_ym.split("-")[0]), int(_ym.split("-")[1])
@@ -173,9 +175,8 @@ def home_page():
         _mo_inc = _inc["total_income"] if isinstance(_inc, dict) else _inc
         if not _b1: _mo_inc -= (_inc.get("kero_bonus", 0) if isinstance(_inc, dict) else 0)
         if not _b2: _mo_inc -= (_inc.get("maggie_bonus", 0) if isinstance(_inc, dict) else 0)
-        _mo_fixed = database.get_effective_fixed_total(conn)
-        _mo_flex = sum(abs(c["total"]) for c in get_flex_breakdown(conn, _ym))
-        _mo_saved = _mo_inc - _mo_fixed - _mo_flex
+        _mo_flex = _monthly_flex_map.get(_ym, 0)
+        _mo_saved = _mo_inc - _effective_fixed - _mo_flex
         _spark_data.append({"month": _ym, "saved": _mo_saved, "hit": _mo_saved >= savings_target})
     _spark_data.reverse()  # oldest first
     _max_spark = max(abs(s["saved"]) for s in _spark_data) if _spark_data else 1
@@ -390,19 +391,10 @@ def home_page():
             f'</div>', unsafe_allow_html=True)
 
     with _m2:
-        # Savings history horizontal bars
+        # Savings history horizontal bars — REUSE sparkline data (no extra queries)
         _sav_hist = []
-        for _ym in available_months[:6]:
-            _sy, _sm = int(_ym.split("-")[0]), int(_ym.split("-")[1])
-            _inc = models.get_income_for_month(_sy, _sm)
-            _mo_inc = _inc["total_income"] if isinstance(_inc, dict) else _inc
-            if not _b1: _mo_inc -= (_inc.get("kero_bonus", 0) if isinstance(_inc, dict) else 0)
-            if not _b2: _mo_inc -= (_inc.get("maggie_bonus", 0) if isinstance(_inc, dict) else 0)
-            _mo_fixed = database.get_effective_fixed_total(conn)
-            _mo_flex = sum(abs(c["total"]) for c in get_flex_breakdown(conn, _ym))
-            _mo_saved = _mo_inc - _mo_fixed - _mo_flex
-            _sav_hist.append({"month": _ym, "saved": _mo_saved, "is_current": _ym == selected_month})
-        _sav_hist.reverse()
+        for _sd in reversed(_spark_data):
+            _sav_hist.append({"month": _sd["month"], "saved": _sd["saved"], "is_current": _sd["month"] == selected_month})
         _max_sav = max(max(abs(s["saved"]) for s in _sav_hist), savings_target, 1)
         _target_pct = min(savings_target / _max_sav * 100, 100)
 
@@ -450,7 +442,7 @@ def home_page():
     # ═══════════════════════════════════════════════════════════════
     # 6. AI-GENERATED WEEKLY INSIGHT (Claude writes the narrative)
     # ═══════════════════════════════════════════════════════════════
-    _flex_bd = get_flex_breakdown(conn, selected_month)
+    _flex_bd = _flex_bd_explain  # reuse cached flex breakdown
 
     # Gather per-week FLEX-ONLY totals with top categories per week
     _insight_week_totals = []
@@ -558,7 +550,7 @@ def home_page():
     # ═══════════════════════════════════════════════════════════════
     # 7. FLEX SPENDING WITH WEEKLY BARS
     # ═══════════════════════════════════════════════════════════════
-    _flex_breakdown = get_flex_breakdown(conn, selected_month)
+    _flex_breakdown = _flex_bd_explain  # reuse cached flex breakdown
     _flex_total = sum(abs(c["total"]) for c in _flex_breakdown)
 
     # Trend data
@@ -579,18 +571,16 @@ def home_page():
         _ws = _we + timedelta(days=1)
         _wn += 1
 
-    # Per-week spending per category
+    # Per-week spending per category — SINGLE bulk query instead of per-week loop
+    _bulk_weekly = database.get_weekly_category_spending(
+        conn, _month_start.isoformat(), _month_end.isoformat())
     _pw = {}  # {cat: [{label, actual, is_current, is_future}, ...]}
     for _wn, _ws, _we, _is_cur_wk in _week_bounds:
         _is_future = _is_current and _ws > date.today()
-        _wk_txns = conn.execute(
-            "SELECT category, SUM(ABS(amount)) as total FROM transactions WHERE date >= ? AND date <= ? AND amount < 0 GROUP BY category",
-            (_ws.isoformat(), _we.isoformat()),
-        ).fetchall()
-        _wk_map = {r["category"]: r["total"] for r in _wk_txns}
         for c in _flex_breakdown:
             _pw.setdefault(c["category"], []).append({
-                "label": f"W{_wn}", "actual": _wk_map.get(c["category"], 0),
+                "label": f"W{_wn}",
+                "actual": _bulk_weekly.get((c["category"], _wn), 0),
                 "is_current": _is_cur_wk, "is_future": _is_future,
             })
 

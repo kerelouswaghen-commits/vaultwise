@@ -166,6 +166,8 @@ def init_db(db_path: str = DB_PATH) -> None:
     CREATE INDEX IF NOT EXISTS idx_txn_date ON transactions(date);
     CREATE INDEX IF NOT EXISTS idx_txn_category ON transactions(category);
     CREATE INDEX IF NOT EXISTS idx_txn_account ON transactions(account_id);
+    CREATE INDEX IF NOT EXISTS idx_txn_date_cat_amt ON transactions(date, category, amount);
+    CREATE INDEX IF NOT EXISTS idx_catconfig_type ON category_config(type);
     CREATE INDEX IF NOT EXISTS idx_stmt_account ON statements(account_id);
     CREATE INDEX IF NOT EXISTS idx_conv_session ON conversations(session_id);
     """)
@@ -510,6 +512,45 @@ def get_spending_trend(conn, months: int = 12) -> list[dict]:
         LIMIT ?
     """, (months,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_monthly_flex_totals(conn, months: int = 7):
+    """Get flex-only spending per month in a single query (for streak dots).
+
+    Returns list of dicts: [{month, flex_total}, ...] newest first.
+    """
+    rows = conn.execute("""
+        SELECT strftime('%Y-%m', t.date) as month,
+               SUM(ABS(t.amount)) as flex_total
+        FROM transactions t
+        LEFT JOIN category_config cc ON t.category = cc.name
+        WHERE t.amount < 0
+          AND (cc.type = 'flex' OR cc.type IS NULL)
+          AND cc.type != 'exclude'
+        GROUP BY month
+        ORDER BY month DESC
+        LIMIT ?
+    """, (months,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_weekly_category_spending(conn, month_start, month_end):
+    """Get spending per category per week in a SINGLE query.
+
+    Returns dict: {(category, week_num): total, ...}
+    """
+    rows = conn.execute("""
+        SELECT category,
+               CAST((julianday(date) - julianday(?)) / 7 AS INT) + 1 as week_num,
+               SUM(ABS(amount)) as total
+        FROM transactions
+        WHERE date >= ? AND date <= ? AND amount < 0
+        GROUP BY category, week_num
+    """, (month_start, month_start, month_end)).fetchall()
+    result = {}
+    for r in rows:
+        result[(r["category"], r["week_num"])] = r["total"]
+    return result
 
 
 def update_transaction_category(conn, txn_id: int, new_category: str) -> None:
