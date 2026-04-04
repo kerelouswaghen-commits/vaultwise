@@ -15,7 +15,7 @@ import config
 import database
 import models
 from shared.charts import DEFAULT_TREND_DICT, PALETTE
-from shared.components import render_category_card
+from shared.components import render_category_card, get_category_icon
 from shared.state import get_conn, get_advisor, escape_dollars
 from shared.filters import (
     get_filtered_breakdown, get_fixed_categories, get_flex_categories,
@@ -634,21 +634,37 @@ def home_page():
     _show_count = 5
 
     def _render_flex_group(cats, total, show_popover=True):
-        # Header
+        # ── Card container ────────────────────────────────────────
         st.markdown(
-            f'<div style="background:{_CARD};border:1px solid {_BORDER};border-radius:{_R};box-shadow:{_SH};overflow:hidden;margin-bottom:12px;">'
-            f'<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px 10px;border-bottom:1px solid {_BS};">'
+            f'<div style="margin-bottom:12px;">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 14px 8px;">'
             f'<span style="font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:{_TX4};font-weight:700;">Flex Spending</span>'
             f'<span style="font-size:18px;font-weight:800;letter-spacing:-0.3px;">${total:,.0f}</span>'
             f'</div>', unsafe_allow_html=True)
 
+        _badge_colors = {"br": f"background:{_REDS};color:#dc2626;", "ba": f"background:{_AMBS};color:#b45309;", "bg": f"background:{_GRNS};color:#059669;", "bb": f"background:{_BLUS};color:#4f46e5;"}
+        _vibrant = ["#7c3aed", "#2563eb", "#059669", "#d97706", "#dc2626", "#ec4899"]
+
         for cat in cats:
             _amt_style = f"color:{_RED};" if cat["badge_cls"] == "br" else ""
-            _badge_colors = {"br": f"background:{_REDS};color:#dc2626;", "ba": f"background:{_AMBS};color:#b45309;", "bg": f"background:{_GRNS};color:#059669;", "bb": f"background:{_BLUS};color:#4f46e5;"}
             _bdg_style = _badge_colors.get(cat["badge_cls"], _badge_colors["bb"])
+            _emoji, _icon_bg = get_category_icon(cat["name"])
 
-            # Weekly bars HTML
-            _bars_html = '<div style="display:flex;flex-direction:column;gap:2px;">'
+            # ── 1. Category header row ────────────────────────────
+            _header_html = (
+                f'<div style="padding:14px 16px 0;border-bottom:0;">'
+                f'<div style="display:flex;align-items:center;gap:10px;">'
+                f'<div style="width:36px;height:36px;border-radius:10px;background:{_icon_bg};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">{_emoji}</div>'
+                f'<div style="flex:1;min-width:0;">'
+                f'<div style="font-size:15px;font-weight:600;">{cat["name"]}</div>'
+                f'<div style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;margin-top:2px;{_bdg_style}">{cat["badge_text"]}</div>'
+                f'</div>'
+                f'<div style="font-size:16px;font-weight:700;flex-shrink:0;{_amt_style}">${cat["spent"]:,.0f}</div>'
+                f'</div></div>'
+            )
+
+            # ── 2. Horizontal week chips ──────────────────────────
+            _chips_html = '<div class="vw-chip-row">'
             for wk in cat["weeks"]:
                 _wk_actual = wk["actual"]
                 _wk_pct = min(_wk_actual / cat["wk_forecast"] * 100, 100) if cat["wk_forecast"] > 0 else 0
@@ -657,84 +673,180 @@ def home_page():
                 _is_fut = wk["is_future"]
 
                 if _is_fut:
-                    _opacity = "opacity:0.3;"
-                    _nums = "&mdash;"
-                elif not _is_cur:
-                    _fill_opacity = "opacity:0.55;"
-                    _nums = f"${_wk_actual:,.0f}/${cat['wk_forecast']:,.0f}"
+                    _chip_cls = "vw-chip future"
+                    _chip_amt = "&mdash;"
+                    _chip_amt_style = ""
+                    _chip_fill = ""
+                elif _is_cur:
+                    _chip_cls = "vw-chip active"
+                    _chip_amt = f"${_wk_actual:,.0f}"
+                    _chip_amt_style = f"color:{_wk_color};" if _wk_color in (_RED, _AMB) else ""
+                    _chip_fill = f'<div class="chip-fill" style="width:{_wk_pct:.0f}%;background:{_wk_color};"></div>'
                 else:
-                    _fill_opacity = ""
-                    _nums = f"${_wk_actual:,.0f}/${cat['wk_forecast']:,.0f}"
+                    _chip_cls = "vw-chip"
+                    _chip_amt = f"${_wk_actual:,.0f}"
+                    _chip_amt_style = f"color:{_wk_color};" if _wk_color in (_RED, _AMB) else ""
+                    _chip_fill = f'<div class="chip-fill" style="width:{_wk_pct:.0f}%;background:{_wk_color};opacity:0.6;"></div>'
 
-                _dot = f'<span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:{_BLU};margin-right:2px;vertical-align:middle;"></span>' if _is_cur else ""
-                _lbl_style = f"color:{_TX2};font-weight:700;" if _is_cur else f"color:{_TX4};font-weight:500;"
+                _chips_html += (
+                    f'<div class="{_chip_cls}">'
+                    f'<div class="chip-label">{wk["label"]}</div>'
+                    f'<div class="chip-amount" style="{_chip_amt_style}">{_chip_amt}</div>'
+                    f'<div class="chip-bar">{_chip_fill}</div>'
+                    f'</div>'
+                )
+            _chips_html += '</div>'
 
-                if _is_fut:
-                    _bars_html += (
-                        f'<div style="display:flex;align-items:center;gap:6px;height:15px;opacity:0.3;">'
-                        f'<span style="font-size:9px;{_lbl_style}width:22px;text-align:right;flex-shrink:0;">{wk["label"]}</span>'
-                        f'<div style="flex:1;height:3px;background:{_TRK};border-radius:2px;"></div>'
-                        f'<span style="font-size:9px;color:{_TX4};white-space:nowrap;min-width:58px;text-align:right;">&mdash;</span>'
-                        f'</div>'
-                    )
-                else:
-                    _fill_op = "opacity:0.55;" if not _is_cur else ""
-                    _bars_html += (
-                        f'<div style="display:flex;align-items:center;gap:6px;height:15px;">'
-                        f'<span style="font-size:9px;{_lbl_style}width:22px;text-align:right;flex-shrink:0;">{_dot}{wk["label"]}</span>'
-                        f'<div style="flex:1;height:3px;background:{_TRK};border-radius:2px;position:relative;">'
-                        f'<div style="height:100%;width:{_wk_pct:.0f}%;border-radius:2px;background:{_wk_color};{_fill_op}min-width:1px;"></div></div>'
-                        f'<span style="font-size:9px;color:{_TX4};white-space:nowrap;min-width:58px;text-align:right;font-variant-numeric:tabular-nums;">{_nums}</span>'
-                        f'</div>'
-                    )
-
-            # Monthly bar
+            # ── 3. Monthly progress bar ───────────────────────────
             _mo_pct = min(cat["spent"] / cat["month_forecast"] * 100, 100) if cat["month_forecast"] > 0 else 0
             _pace_marker_pct = min(cat["pace_frac"] * 100, 100)
-            _bars_html += (
-                f'<div style="display:flex;align-items:center;gap:6px;height:18px;margin-top:3px;">'
-                f'<span style="font-size:9px;font-weight:700;color:{_TX3};width:22px;text-align:right;flex-shrink:0;">Mo</span>'
-                f'<div style="flex:1;height:5px;background:{_TRK};border-radius:3px;position:relative;">'
-                f'<div style="height:5px;width:{_mo_pct:.0f}%;border-radius:3px;background:{cat["mo_color"]};"></div>'
-                f'<div style="position:absolute;top:-3px;left:{_pace_marker_pct:.0f}%;width:1.5px;height:11px;background:{_TX};border-radius:1px;opacity:0.3;"></div>'
+            _month_html = (
+                f'<div class="vw-month-bar">'
+                f'<span class="mo-label">Mo</span>'
+                f'<div class="mo-track">'
+                f'<div class="mo-fill" style="width:{_mo_pct:.0f}%;background:{cat["mo_color"]};"></div>'
+                f'<div class="mo-pace" style="left:{_pace_marker_pct:.0f}%;"></div>'
                 f'</div>'
-                f'<span style="font-size:9px;font-weight:600;color:{_TX3};white-space:nowrap;min-width:58px;text-align:right;font-variant-numeric:tabular-nums;">${cat["spent"]:,.0f}/${cat["month_forecast"]:,.0f}</span>'
-                f'</div>'
-            )
-            _bars_html += '</div>'
-
-            # Category row HTML
-            _cat_html = (
-                f'<div style="padding:12px 16px;border-bottom:1px solid {_BS};">'
-                f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-                f'<div style="display:flex;align-items:center;gap:8px;">'
-                f'<span style="font-size:13px;font-weight:600;">{cat["name"]}</span>'
-                f'<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;{_bdg_style}">{cat["badge_text"]}</span>'
-                f'</div>'
-                f'<span style="font-size:15px;font-weight:700;{_amt_style}">${cat["spent"]:,.0f}</span>'
-                f'</div>'
-                f'{_bars_html}'
+                f'<span class="mo-nums">${cat["spent"]:,.0f} / ${cat["month_forecast"]:,.0f}</span>'
                 f'</div>'
             )
-            st.markdown(_cat_html, unsafe_allow_html=True)
 
-            # Popover for detail
-            if show_popover:
-                _bd = next((c for c in _flex_breakdown if c["category"] == cat["name"]), None)
-                if _bd:
-                    # Map badge_cls to icon for the override
-                    _badge_icons = {"br": "🔴", "ba": "🟠", "bg": "🟢", "bb": "🔵"}
-                    _sev_override = {
-                        "color": cat["mo_color"],
-                        "icon": _badge_icons.get(cat["badge_cls"], "🔵"),
-                        "badge_text": cat["badge_text"],
-                    }
-                    with st.popover(f"▶ {cat['name']} details", use_container_width=True):
-                        render_category_card(
-                            _bd, trend_results.get(cat["name"], DEFAULT_TREND_DICT),
-                            conn, {}, selected_month,
-                            override_severity=_sev_override,
+            # Render card + expander inside one bordered container
+            _accent = cat["mo_color"]
+
+            with st.container(border=True):
+                # Top accent bar + card content
+                _cat_html = (
+                    f'<div style="margin:-1rem -1rem 0 -1rem;overflow:hidden;border-radius:14px 14px 0 0;">'
+                    f'<div style="height:4px;background:{_accent};"></div>'
+                    f'</div>'
+                    f'{_header_html}{_chips_html}{_month_html}'
+                )
+                st.markdown(_cat_html, unsafe_allow_html=True)
+
+                # Expander inside the same container
+                if not show_popover:
+                    continue
+                with st.expander("Forecast & Details", icon="🔮"):
+                    _t = trend_results.get(cat["name"], DEFAULT_TREND_DICT)
+                    _t_mean = float(_t.get("mean", 0))
+                    _t_direction = _t.get("direction", "stable")
+                    _t_slope = float(_t.get("slope_per_month", 0))
+
+                    # Fallback: compute from history when cache is empty
+                    _detail_hist = database.get_category_monthly_history(conn, cat["name"], months=12)
+                    if _t_mean <= 0 and _detail_hist and len(_detail_hist) >= 2:
+                        _dh_vals = [abs(h["total"]) for h in _detail_hist]
+                        _t_mean = sum(_dh_vals) / len(_dh_vals)
+                        # Compute simple trend from history
+                        if len(_dh_vals) >= 3:
+                            _recent = sum(_dh_vals[:3]) / 3
+                            _older = sum(_dh_vals[-3:]) / 3
+                            _t_slope = (_recent - _older) / max(len(_dh_vals) - 1, 1)
+                            if _t_slope > _t_mean * 0.05:
+                                _t_direction = "rising"
+                            elif _t_slope < -_t_mean * 0.05:
+                                _t_direction = "falling"
+                            else:
+                                _t_direction = "stable"
+
+                    # Forecast row
+                    _pf = analytics_cache.get_cached_prophet(conn, cat["name"])
+                    if _pf and _pf.get("forecast"):
+                        _fc = _pf["forecast"][0]
+                        _fc_pred = _fc["predicted"]
+                        _fc_lower = _fc.get("lower", _fc_pred * 0.8)
+                        _fc_upper = _fc.get("upper", _fc_pred * 1.2)
+                        _fc_dir = "↑" if _fc_pred > cat["spent"] else "↓"
+                        _fc_html = (
+                            f'<div class="vw-forecast-row">'
+                            f'<div class="fc-icon">🔮</div>'
+                            f'<div>'
+                            f'<div class="fc-label">Prophet Forecast</div>'
+                            f'<div class="fc-value">${_fc_pred:,.0f} next month {_fc_dir}</div>'
+                            f'<div class="fc-range">Range: ${_fc_lower:,.0f} &ndash; ${_fc_upper:,.0f} (80% CI)</div>'
+                            f'</div></div>'
                         )
+                    else:
+                        _fc_html = (
+                            f'<div class="vw-forecast-row">'
+                            f'<div class="fc-icon">📊</div>'
+                            f'<div>'
+                            f'<div class="fc-label">Monthly Forecast</div>'
+                            f'<div class="fc-value">${cat["month_forecast"]:,.0f} expected</div>'
+                            f'<div class="fc-range">Based on historical average</div>'
+                            f'</div></div>'
+                        )
+
+                    # Stats grid
+                    _pct_vs = ((cat["spent"] / _t_mean) - 1) * 100 if _t_mean > 0 else 0
+                    _pct_color = _RED if _pct_vs > 15 else (_AMB if _pct_vs > 0 else _GRN)
+                    _pct_sign = "+" if _pct_vs > 0 else ""
+                    _sev_color = cat["mo_color"]
+                    _stats_html = (
+                        f'<div class="vw-stats-grid">'
+                        f'<div class="stat-cell"><div class="stat-label">This Month</div>'
+                        f'<div class="stat-value" style="color:{_sev_color};">${cat["spent"]:,.0f}</div></div>'
+                        f'<div class="stat-cell"><div class="stat-label">Average</div>'
+                        f'<div class="stat-value">${_t_mean:,.0f}</div></div>'
+                        f'<div class="stat-cell"><div class="stat-label">vs Avg</div>'
+                        f'<div class="stat-value" style="color:{_pct_color};">{_pct_sign}{_pct_vs:.0f}%</div></div>'
+                        f'</div>'
+                    )
+
+                    # Top merchants
+                    _merch = database.get_merchant_breakdown_for_month(conn, cat["name"], selected_month, limit=5)
+                    _merch_html = ""
+                    if _merch:
+                        _max_m = max(abs(m["total"]) for m in _merch) if _merch else 1
+                        _merch_html = '<div style="margin-top:2px;"><div style="font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:6px;">Top Merchants</div>'
+                        for _mi, _m in enumerate(_merch):
+                            _mname = _m["name"] or ""
+                            _mname = re.sub(r'[A-Z0-9]{8,}', '', _mname).strip()
+                            _mname = re.sub(r'\s+', ' ', _mname).strip().rstrip(',').strip()
+                            if not _mname or len(_mname) <= 2:
+                                _mname = "Other"
+                            _mname = _mname.title() if _mname.isupper() else _mname
+                            _mname = _mname[:25]
+                            _mamt = abs(_m["total"])
+                            _mw = min(_mamt / _max_m * 100, 100) if _max_m > 0 else 0
+                            _mc = _vibrant[_mi % len(_vibrant)]
+                            # If bar is too narrow (<35%), show name outside the bar
+                            if _mw < 35:
+                                _merch_html += (
+                                    f'<div class="vw-merchant-row">'
+                                    f'<div class="merch-bar"><div class="merch-fill" style="width:{_mw:.0f}%;background:{_mc};"></div>'
+                                    f'<span class="merch-name-outside" style="position:absolute;left:{_mw:.0f}%;padding-left:6px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:600;color:{_mc};white-space:nowrap;">{_mname}</span></div>'
+                                    f'<span class="merch-amt">${_mamt:,.0f}</span>'
+                                    f'</div>'
+                                )
+                            else:
+                                _merch_html += (
+                                    f'<div class="vw-merchant-row">'
+                                    f'<div class="merch-bar"><div class="merch-fill" style="width:{_mw:.0f}%;background:{_mc};"><span class="merch-name">{_mname}</span></div></div>'
+                                    f'<span class="merch-amt">${_mamt:,.0f}</span>'
+                                    f'</div>'
+                                )
+                        _merch_html += '</div>'
+
+                    # Trend line (reuse _detail_hist from above)
+                    _dir_icons = {"rising": "📈", "falling": "📉", "stable": "→"}
+                    _dir_icon = _dir_icons.get(_t_direction, "→")
+                    _slope_dir = "↑" if _t_slope > 0 else ("↓" if _t_slope < 0 else "")
+                    if _detail_hist and len(_detail_hist) >= 2:
+                        _h_vals = [abs(h["total"]) for h in _detail_hist]
+                        _h_min, _h_max = min(_h_vals), max(_h_vals)
+                        _range_str = f"Range: <strong>${_h_min:,.0f}&ndash;${_h_max:,.0f}</strong>"
+                    else:
+                        _range_str = ""
+                    _trend_html = (
+                        f'<div class="vw-trend-line">'
+                        f'<span>{_dir_icon} Trend: <strong>{_t_direction.title()} {_slope_dir} ${abs(_t_slope):,.0f}/mo</strong></span>'
+                        + (f'<span>&bull;</span><span>{_range_str}</span>' if _range_str else '')
+                        + f'</div>'
+                    )
+
+                    st.markdown(_fc_html + _stats_html + _merch_html + _trend_html, unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
 

@@ -610,6 +610,132 @@ def inject_css():
         font-size: 15px; font-weight: 700; flex-shrink: 0;
     }
 
+    /* ── Horizontal week chips (Option C flex cards) ───────────── */
+    .vw-chip-row {
+        display: flex; gap: 6px; overflow-x: auto;
+        -webkit-overflow-scrolling: touch; scrollbar-width: none;
+        padding: 10px 16px 6px;
+    }
+    .vw-chip-row::-webkit-scrollbar { display: none; }
+    .vw-chip {
+        min-width: 68px; max-width: 68px; flex-shrink: 0;
+        padding: 8px 6px; border-radius: 10px;
+        border: 1px solid var(--vw-border); background: var(--vw-card-bg);
+        text-align: center;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .vw-chip .chip-label {
+        font-size: 10px; font-weight: 600; color: var(--vw-text-faint);
+        text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    .vw-chip .chip-amount {
+        font-size: 13px; font-weight: 700; margin-top: 2px;
+    }
+    .vw-chip .chip-bar {
+        height: 3px; border-radius: 2px; background: var(--vw-progress-bg, #f3f4f6);
+        overflow: hidden; margin-top: 4px;
+    }
+    .vw-chip .chip-bar .chip-fill {
+        height: 100%; border-radius: 2px;
+    }
+    .vw-chip.active {
+        border-color: #6366f1; background: #eef2ff;
+    }
+    .vw-chip.active .chip-label { color: #6366f1; }
+    .vw-chip.future { opacity: 0.3; }
+
+    /* Monthly progress bar */
+    .vw-month-bar {
+        display: flex; align-items: center; gap: 8px;
+        padding: 0 16px; margin-bottom: 4px;
+    }
+    .vw-month-bar .mo-label {
+        font-size: 10px; font-weight: 700; color: var(--vw-text-muted);
+        width: 22px; text-align: right; flex-shrink: 0;
+    }
+    .vw-month-bar .mo-track {
+        flex: 1; height: 5px; border-radius: 3px; position: relative;
+        background: var(--vw-progress-bg, #f3f4f6); overflow: visible;
+    }
+    .vw-month-bar .mo-fill {
+        height: 5px; border-radius: 3px; position: absolute; top: 0; left: 0;
+    }
+    .vw-month-bar .mo-pace {
+        position: absolute; top: -3px; width: 1.5px; height: 11px;
+        background: var(--vw-text); border-radius: 1px; opacity: 0.3;
+    }
+    .vw-month-bar .mo-nums {
+        font-size: 11px; font-weight: 600; color: var(--vw-text-muted);
+        white-space: nowrap; min-width: 70px; text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Forecast row (purple card) */
+    .vw-forecast-row {
+        background: #f5f3ff; border-radius: 10px;
+        padding: 10px 12px; display: flex; align-items: center;
+        gap: 10px; margin-bottom: 10px;
+    }
+    .vw-forecast-row .fc-icon { font-size: 20px; }
+    .vw-forecast-row .fc-label {
+        font-size: 10px; color: #8b5cf6; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .vw-forecast-row .fc-value {
+        font-size: 15px; font-weight: 700; margin-top: 1px;
+    }
+    .vw-forecast-row .fc-range {
+        font-size: 11px; color: #9ca3af;
+    }
+
+    /* Stats grid (3-column) */
+    .vw-stats-grid {
+        display: grid; grid-template-columns: 1fr 1fr 1fr;
+        gap: 6px; margin-bottom: 10px;
+    }
+    .vw-stats-grid .stat-cell {
+        text-align: center; padding: 8px 4px;
+        background: #f7f8fa; border-radius: 10px;
+        border: 1px solid var(--vw-border);
+    }
+    .vw-stats-grid .stat-label {
+        font-size: 9px; color: var(--vw-text-faint);
+        text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    .vw-stats-grid .stat-value {
+        font-size: 15px; font-weight: 700; margin-top: 2px;
+    }
+
+    /* Merchant bars */
+    .vw-merchant-row {
+        display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+    }
+    .vw-merchant-row .merch-bar {
+        flex: 1; height: 22px; border-radius: 6px; position: relative;
+        background: var(--vw-progress-bg, #f3f4f6);
+    }
+    .vw-merchant-row .merch-fill {
+        height: 100%; border-radius: 6px; display: flex;
+        align-items: center; padding-left: 8px;
+    }
+    .vw-merchant-row .merch-name {
+        font-size: 11px; font-weight: 600; color: white;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .vw-merchant-row .merch-amt {
+        font-size: 12px; font-weight: 600; color: var(--vw-text);
+        flex-shrink: 0; min-width: 50px; text-align: right;
+    }
+
+    /* Trend summary line */
+    .vw-trend-line {
+        display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        font-size: 11px; color: var(--vw-text-muted);
+        margin-top: 8px; padding-top: 8px;
+        border-top: 1px solid var(--vw-border);
+    }
+    .vw-trend-line strong { color: var(--vw-text); }
+
     /* V5 Mobile responsive additions */
     @media (max-width: 768px) {
         .vw-hero-v5 { padding: 16px; border-radius: 16px; }
@@ -627,6 +753,10 @@ def inject_css():
         .vw-flex-row .cat-name { font-size: 12px; }
         .vw-flex-row .amount { font-size: 12px; }
         .vw-ai-insight .insight-body { font-size: 12px; }
+        .vw-chip { min-width: 62px; max-width: 62px; }
+        .vw-chip .chip-amount { font-size: 12px; }
+        .vw-stats-grid .stat-value { font-size: 13px; }
+        .vw-forecast-row .fc-value { font-size: 14px; }
     }
 </style>""", unsafe_allow_html=True)
 
@@ -657,4 +787,11 @@ def inject_dark_mode_js(enabled=False):
             hr { border-color: #2a2a38 !important; }
             .stPopover > div { background-color: #1a1a24 !important; border-color: #2a2a38 !important; }
             [data-testid="stPopover"] [data-testid="stMarkdownContainer"] * { color: #e0e0e8 !important; }
+            /* Dark mode: week chips + detail panel */
+            .vw-chip { border-color: #2a2a38 !important; background: #1a1a24 !important; }
+            .vw-chip .chip-amount { color: #e0e0e8 !important; }
+            .vw-chip.active { border-color: #6366f1 !important; background: #1e1b2e !important; }
+            .vw-forecast-row { background: #1e1b2e !important; }
+            .vw-stats-grid .stat-cell { background: #22222e !important; border-color: #2a2a38 !important; }
+            .vw-merchant-row .merch-bar { background: #2a2a3a !important; }
         </style>""", unsafe_allow_html=True)
