@@ -24,17 +24,20 @@ def get_active_categories(conn) -> list[str]:
     but is missing from the list — prevents silently dropping real spending
     when Monarch Money introduces new category names.
     """
+    from shared.filters import get_excluded_categories
+    _excluded = get_excluded_categories(conn)
+
     definitions = database.get_category_definitions(conn)
     if definitions:
-        cats = [d["name"] for d in definitions if d["name"] not in config.EXCLUDED_CATEGORIES]
+        cats = [d["name"] for d in definitions if d["name"] not in _excluded]
     else:
-        cats = [c for c in config.CATEGORIES if c not in config.EXCLUDED_CATEGORIES]
+        cats = [c for c in config.CATEGORIES if c not in _excluded]
 
     # Include any transaction categories not yet in the list (e.g., new Monarch categories)
     db_cats = conn.execute(
         "SELECT DISTINCT category FROM transactions WHERE amount < 0"
     ).fetchall()
-    known = set(cats) | config.EXCLUDED_CATEGORIES
+    known = set(cats) | _excluded
     for row in db_cats:
         if row["category"] not in known:
             cats.append(row["category"])

@@ -37,8 +37,9 @@ def get_fixed_categories(conn) -> set:
 
 
 def get_excluded_categories(conn) -> set:
-    """Returns set of category names tagged as 'exclude' in DB."""
-    return set(database.get_categories_by_type(conn, "exclude"))
+    """Returns set of excluded category names: DB 'exclude' type + config.EXCLUDED_CATEGORIES."""
+    db_excluded = set(database.get_categories_by_type(conn, "exclude"))
+    return db_excluded | getattr(_cfg, 'EXCLUDED_CATEGORIES', set())
 
 
 def get_flex_categories(conn) -> set:

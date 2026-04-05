@@ -23,10 +23,9 @@ import spending_intelligence
 # CONFIG helpers
 # ═══════════════════════════════════════════════════════════════
 
-def _get_muted(conn=None):
-    if conn is not None:
-        return set(database.get_categories_by_type(conn, "exclude"))
-    return set(getattr(config, 'MUTED_CATEGORIES', []))
+def _get_muted(conn):
+    from shared.filters import get_excluded_categories
+    return get_excluded_categories(conn)
 
 
 # ═══════════════════════════════════════════════════════════════

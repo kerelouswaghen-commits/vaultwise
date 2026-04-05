@@ -477,7 +477,7 @@ def transactions_page():
     df["tag"] = df["category"].apply(_get_tag)
 
     if hide_transfers and cat == "All":
-        _hide_cats = config.EXCLUDED_CATEGORIES | set(_muted_cats)
+        _hide_cats = set(_muted_cats)  # _muted_cats = get_excluded_categories(conn) which includes config
         df = df[~df["category"].isin(_hide_cats)]
 
     if _search_q:

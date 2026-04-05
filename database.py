@@ -476,7 +476,7 @@ def get_monthly_summary(conn, year: int, month: int) -> dict:
     rows = conn.execute("""
         SELECT category, SUM(amount) as total, COUNT(*) as count
         FROM transactions
-        WHERE date >= ? AND date < ?
+        WHERE date >= ? AND date < ? AND amount < 0
         GROUP BY category
         ORDER BY total ASC
     """, (start, end)).fetchall()
@@ -493,10 +493,24 @@ def get_category_breakdown(conn, start_date: str, end_date: str) -> list[dict]:
     rows = conn.execute("""
         SELECT category, SUM(amount) as total, COUNT(*) as count, AVG(amount) as avg_amount
         FROM transactions
-        WHERE date >= ? AND date <= ?
+        WHERE date >= ? AND date <= ? AND amount < 0
         GROUP BY category
         ORDER BY total ASC
     """, (start_date, end_date)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_annual_category_breakdown(conn, year: str) -> list[dict]:
+    """Get spending by category for an entire year (format: YYYY).
+    Only includes expenses (amount < 0). Returns sorted by total spend (most negative first).
+    """
+    rows = conn.execute("""
+        SELECT category, SUM(amount) as total, COUNT(*) as txn_count
+        FROM transactions
+        WHERE strftime('%Y', date) = ? AND amount < 0
+        GROUP BY category
+        ORDER BY total ASC
+    """, (year,)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -511,6 +525,26 @@ def get_spending_trend(conn, months: int = 12) -> list[dict]:
         ORDER BY month DESC
         LIMIT ?
     """, (months,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_spending_trend_filtered(conn, months: int = 12, excluded_categories: set = None) -> list[dict]:
+    """Like get_spending_trend but excludes specified categories (transfers, CC payments, etc.)."""
+    if not excluded_categories:
+        return get_spending_trend(conn, months)
+    placeholders = ",".join("?" * len(excluded_categories))
+    params = list(excluded_categories) + [months]
+    rows = conn.execute(f"""
+        SELECT strftime('%Y-%m', date) as month,
+               SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) as spending,
+               SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as income,
+               COUNT(*) as txn_count
+        FROM transactions
+        WHERE category NOT IN ({placeholders})
+        GROUP BY strftime('%Y-%m', date)
+        ORDER BY month DESC
+        LIMIT ?
+    """, params).fetchall()
     return [dict(r) for r in rows]
 
 

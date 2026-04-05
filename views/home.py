@@ -972,29 +972,78 @@ def home_page():
     if needs_response:
         pending_msg = st.session_state.dashboard_chat_history[-1]["content"]
 
-        if _is_historical:
-            _trend_data = database.get_spending_trend(conn, months=6)
-            _trend_summary = "\n".join(f"  {r['month']}: spent ${abs(r['spending']):,.0f}, income ${r['income']:,.0f}" for r in _trend_data)
+        # Detect year-level questions (e.g. "in 2025", "for 2024")
+        _year_match = re.search(r'\b(20[0-9]{2})\b', pending_msg)
+
+        if _year_match:
+            _target_year = _year_match.group(1)
+            _annual_breakdown = database.get_annual_category_breakdown(conn, _target_year)
+            _excluded = get_excluded_categories(conn)
+            _annual_breakdown = [c for c in _annual_breakdown if c['category'] not in _excluded]
+            _annual_total = sum(abs(r['total']) for r in _annual_breakdown)
+            _annual_cat_summary = "\n".join(
+                f"  {c['category']}: ${abs(c['total']):,.2f} ({c['txn_count']} txns)"
+                for c in _annual_breakdown
+            )
+            _trend_data = database.get_spending_trend_filtered(conn, months=24, excluded_categories=_excluded)
+            _year_months = sorted(
+                [r for r in _trend_data if r['month'].startswith(_target_year)],
+                key=lambda x: x['month'],
+            )
+            _year_trend = "\n".join(
+                f"  {r['month']}: spent ${abs(r['spending']):,.0f}"
+                for r in _year_months
+            )
+            _completeness = f"Data covers {len(_year_months)} month(s) of {_target_year}."
+            _unified_context = (
+                f"ANNUAL DATA — {_target_year}\n{_completeness}\n"
+                f"Savings target: ${savings_target:,}/mo\n\n"
+                f"TOTAL SPENDING IN {_target_year}: ${_annual_total:,.2f}\n\n"
+                f"CATEGORY BREAKDOWN (full year, expenses only):\n{_annual_cat_summary}\n\n"
+                f"MONTHLY TOTALS FOR {_target_year}:\n{_year_trend}\n\n"
+                f"This is COMPLETE data for the available months. Use these exact numbers — do not estimate or extrapolate.\n\n"
+                f"FOLLOW_UP: After your answer, add 4 follow-up questions starting with '- '."
+            )
+        elif _is_historical:
+            _excluded_hist = get_excluded_categories(conn)
+            _trend_data = database.get_spending_trend_filtered(conn, months=12, excluded_categories=_excluded_hist)
+            _trend_summary = "\n".join(f"  {r['month']}: spent ${abs(r['spending']):,.0f}" for r in _trend_data)
             _cat_history_lines = ""
-            for _ci in month_breakdown[:10]:
-                _hist = database.get_category_monthly_history(conn, _ci["category"], months=6)
+            _all_hist_cats = conn.execute("""
+                SELECT category, SUM(amount) as total FROM transactions
+                WHERE date >= date('now', '-12 months') AND amount < 0
+                GROUP BY category ORDER BY total ASC
+            """).fetchall()
+            _all_hist_cat_names = [r[0] for r in _all_hist_cats if r[0] not in _excluded_hist]
+            for _cat_name in _all_hist_cat_names[:20]:
+                _hist = database.get_category_monthly_history(conn, _cat_name, months=12)
                 if _hist:
-                    _cat_history_lines += f"  {_ci['category']}: " + ", ".join(f"{h['month']}: ${abs(h['total']):,.0f}" for h in _hist) + "\n"
+                    _cat_history_lines += f"  {_cat_name}: " + ", ".join(f"{h['month']}: ${abs(h['total']):,.0f}" for h in _hist) + "\n"
             _cat_summary = "\n".join(f"  {c['category']}: ${abs(c['total']):,.2f} ({c['txn_count']} txns)" for c in month_breakdown)
             _unified_context = (
-                f"HISTORICAL DATA — Last 6 Months\nCurrent month: {month_display}\nSavings target: ${savings_target:,}/mo\n\n"
+                f"HISTORICAL DATA — Last 12 Months\nCurrent month: {month_display}\nSavings target: ${savings_target:,}/mo\n\n"
                 f"MONTHLY TOTALS:\n{_trend_summary}\n\nCATEGORY HISTORY:\n{_cat_history_lines}\nCURRENT MONTH:\n{_cat_summary}\n\n"
                 f"Answer comparisons, rank months, identify patterns. Reference specific months and amounts.\n\n"
                 f"FOLLOW_UP: After your answer, add 4 follow-up questions starting with '- '."
             )
         else:
-            _all_txns = conn.execute("SELECT date, description, amount, category FROM transactions WHERE strftime('%Y-%m', date) = ? ORDER BY category, date", (selected_month,)).fetchall()
+            _excl_cats = get_excluded_categories(conn)
+            _excl_ph = ",".join("?" * len(_excl_cats)) if _excl_cats else "''"
+            _all_txns = conn.execute(
+                f"SELECT date, description, amount, category FROM transactions "
+                f"WHERE strftime('%Y-%m', date) = ? AND amount < 0 AND category NOT IN ({_excl_ph}) "
+                f"ORDER BY category, date",
+                (selected_month, *_excl_cats),
+            ).fetchall()
             _txn_context = "\n".join(f"{t['date']} | {t['description']} | ${t['amount']:,.2f} | {t['category']}" for t in _all_txns)
             _cat_summary = "\n".join(f"  {c['category']}: ${abs(c['total']):,.2f} ({c['txn_count']} txns)" for c in month_breakdown)
+            _total_cat_spending = sum(abs(c['total']) for c in month_breakdown)
+            _total_txn_count = sum(c['txn_count'] for c in month_breakdown)
             _unified_context = (
                 f"DASHBOARD DATA for {month_display}:\n- Income: ${_monthly_income:,.0f}\n- Fixed: ${_effective_fixed:,.0f}\n"
                 f"- Savings target: ${savings_target:,}/mo\n- Flex budget: ${_disc_budget:,.0f}\n- Flex spent: ${_txn_disc:,.0f}\n"
-                f"- Over budget: ${_over_budget:,.0f}\n- Saved: ${_saved:,.0f}\n- Gap: ${_gap:+,.0f}\n\n"
+                f"- Over budget: ${_over_budget:,.0f}\n- Saved: ${_saved:,.0f}\n- Gap: ${_gap:+,.0f}\n"
+                f"- Total category spending (all categories below): ${_total_cat_spending:,.2f} ({_total_txn_count} transactions)\n\n"
                 f"CATEGORIES:\n{_cat_summary}\n\nTRANSACTIONS:\n{_txn_context}\n\n"
                 f"FOLLOW_UP: After your answer, add 4 follow-up questions starting with '- '."
             )

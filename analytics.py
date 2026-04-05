@@ -287,7 +287,8 @@ def cross_category_correlation(conn, months: int = 12) -> list[dict]:
         all_cats.add(r["category"])
 
     # Skip non-actionable categories
-    skip = config.EXCLUDED_CATEGORIES | {"Debt Payments", "Fees & Interest"}
+    from shared.filters import get_excluded_categories, get_fixed_categories
+    skip = get_excluded_categories(conn) | get_fixed_categories(conn)
     cats = sorted([c for c in all_cats if c not in skip])
     all_months = sorted(monthly_data.keys())
 
@@ -713,8 +714,8 @@ def detect_savings_opportunities(conn, min_monthly: float = 30) -> list[SavingsO
         cat_monthly[r["category"]].append(abs(r["total"]))
 
     # Non-actionable categories
-    skip_cats = config.EXCLUDED_CATEGORIES | {"Daycare",
-                 "Housing & Utilities", "Debt Payments"}
+    from shared.filters import get_excluded_categories, get_fixed_categories
+    skip_cats = get_excluded_categories(conn) | get_fixed_categories(conn)
 
     opportunities = []
 
