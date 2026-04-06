@@ -295,6 +295,7 @@ def _upload_section(conn, coverage):
 
             inserted = database.bulk_insert_transactions(conn, transactions)
             database.update_statement_txn_count(conn, stmt_id, inserted)
+            database.apply_merchant_overrides(conn)
             skipped = len(transactions) - inserted
 
             analytics_cache.invalidate(conn)

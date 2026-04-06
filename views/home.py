@@ -86,15 +86,8 @@ def home_page():
     _sel_year, _sel_month = int(_y), int(_m)
     month_display = f"{_mn[_sel_month]} {_y}"
 
-    # Apply merchant overrides
-    _overrides = getattr(config, 'MERCHANT_CATEGORY_OVERRIDES', {})
-    if _overrides:
-        for _pat, _tcat in _overrides.items():
-            conn.execute(
-                "UPDATE transactions SET category = ? WHERE strftime('%Y-%m', date) = ? AND LOWER(description) LIKE ? AND category != ?",
-                (_tcat, selected_month, f"%{_pat.lower()}%", _tcat),
-            )
-        conn.commit()
+    # Apply merchant overrides (centralized — fixes ALL months, idempotent)
+    database.apply_merchant_overrides(conn)
 
     # Get breakdown
     month_breakdown = get_filtered_breakdown(conn, selected_month)
