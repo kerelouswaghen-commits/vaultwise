@@ -33,9 +33,20 @@ FETCH_LIMIT = 500
 # Credential helpers
 # ---------------------------------------------------------------------------
 def _get_monarch_credentials():
-    """Read Monarch email/password from env vars or st.secrets (never from DB)."""
+    """Read Monarch email/password from env vars, .env file, or st.secrets (never from DB)."""
     email = os.environ.get("MONARCH_EMAIL", "")
     password = os.environ.get("MONARCH_PASSWORD", "")
+    # Fallback: parse .env file directly (local dev without python-dotenv)
+    if not email:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        if os.path.exists(env_path):
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("MONARCH_EMAIL="):
+                        email = line.split("=", 1)[1].strip()
+                    elif line.startswith("MONARCH_PASSWORD="):
+                        password = line.split("=", 1)[1].strip()
     if not email:
         try:
             import streamlit as st
