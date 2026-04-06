@@ -1022,8 +1022,13 @@ def home_page():
             _cat_summary = "\n".join(f"  {c['category']}: ${abs(c['total']):,.2f} ({c['txn_count']} txns)" for c in month_breakdown)
             _unified_context = (
                 f"HISTORICAL DATA — Last 12 Months\nCurrent month: {month_display}\nSavings target: ${savings_target:,}/mo\n\n"
+                f"IMPORTANT: The MONTHLY TOTALS below are the ACTUAL tracked spending from transaction data. "
+                f"For any question about monthly expenses, averages, or spending trends, use ONLY these monthly totals. "
+                f"Do NOT use the 'Total monthly expenses' or fixed expense figures from your system knowledge — "
+                f"those are budget/planning numbers, not actual transaction totals.\n\n"
                 f"MONTHLY TOTALS:\n{_trend_summary}\n\nCATEGORY HISTORY:\n{_cat_history_lines}\nCURRENT MONTH:\n{_cat_summary}\n\n"
-                f"Answer comparisons, rank months, identify patterns. Reference specific months and amounts.\n\n"
+                f"Answer comparisons, rank months, identify patterns. Reference specific months and amounts. "
+                f"Use ONLY the data provided above — do not estimate or combine with other figures.\n\n"
                 f"FOLLOW_UP: After your answer, add 4 follow-up questions starting with '- '."
             )
         else:
@@ -1064,8 +1069,8 @@ def home_page():
                         _lines = response.rstrip().split("\n")
                         for _ln in reversed(_lines):
                             _stripped = _ln.strip()
-                            if _stripped.startswith("- ") and 10 < len(_stripped) < 80:
-                                _followups.insert(0, _stripped[2:].strip().rstrip("?") + "?")
+                            if _stripped.startswith("- ") and len(_stripped) > 10:
+                                _followups.insert(0, _stripped[2:].strip().rstrip("?").strip("*") + "?")
                             elif _followups:
                                 break
                         _display_response = response
@@ -1084,25 +1089,31 @@ def home_page():
             with st.chat_message("assistant"):
                 st.warning("Set your Anthropic API key in Settings to use the chat.")
 
-    # Quick actions
-    if st.session_state.suggested_questions and len(st.session_state.suggested_questions) >= 4:
-        _qa = {q: q for q in st.session_state.suggested_questions[:4]}
-    elif _is_historical:
-        _qa = {"6-Month Trend": "How has spending changed over 6 months?", "Best Month": "Which was my best savings month?",
-               "Biggest Changes": "Which categories changed most?", "Seasonal Patterns": "Any seasonal spending patterns?"}
+    # Quick actions — use AI-generated follow-ups when available, pad with defaults if needed
+    if _is_historical:
+        _defaults = [("6-Month Trend", "How has spending changed over 6 months?"), ("Best Month", "Which was my best savings month?"),
+                     ("Biggest Changes", "Which categories changed most?"), ("Seasonal Patterns", "Any seasonal spending patterns?")]
     else:
-        _qa = {"Am I on track?": "Am I on track to meet my savings target?", "Can I spend $200?": "Can I afford $200 this weekend?",
-               "Cut $100 where?": "Where are the easiest $100 in cuts?", "vs Last Month": "Compare this month to last month."}
+        _defaults = [("Am I on track?", "Am I on track to meet my savings target?"), ("Can I spend $200?", "Can I afford $200 this weekend?"),
+                     ("Cut $100 where?", "Where are the easiest $100 in cuts?"), ("vs Last Month", "Compare this month to last month.")]
+
+    _sq = st.session_state.suggested_questions
+    if _sq and len(_sq) >= 2:
+        _qa = [(q[:60] + "...?" if len(q) > 64 else q, q) for q in _sq[:4]]
+        # Pad with defaults if fewer than 4 follow-ups
+        while len(_qa) < 4:
+            _qa.append(_defaults[len(_qa)])
+    else:
+        _qa = _defaults
 
     def _ask_q(q): st.session_state.dashboard_chat_history.append({"role": "user", "content": q})
 
-    _qi = list(_qa.items())
     _c1, _c2 = st.columns(2)
-    _c1.button(_qi[0][0], width="stretch", key="q0", on_click=_ask_q, args=(_qi[0][1],))
-    _c2.button(_qi[1][0], width="stretch", key="q1", on_click=_ask_q, args=(_qi[1][1],))
+    _c1.button(_qa[0][0], width="stretch", key="q0", on_click=_ask_q, args=(_qa[0][1],))
+    _c2.button(_qa[1][0], width="stretch", key="q1", on_click=_ask_q, args=(_qa[1][1],))
     _c3, _c4 = st.columns(2)
-    _c3.button(_qi[2][0], width="stretch", key="q2", on_click=_ask_q, args=(_qi[2][1],))
-    _c4.button(_qi[3][0], width="stretch", key="q3", on_click=_ask_q, args=(_qi[3][1],))
+    _c3.button(_qa[2][0], width="stretch", key="q2", on_click=_ask_q, args=(_qa[2][1],))
+    _c4.button(_qa[3][0], width="stretch", key="q3", on_click=_ask_q, args=(_qa[3][1],))
 
     _chat_mode = st.segmented_control("chat_mode_toggle", ["This Month", "Historical"], default=st.session_state.chat_mode, label_visibility="collapsed")
     if _chat_mode and _chat_mode != st.session_state.chat_mode:
